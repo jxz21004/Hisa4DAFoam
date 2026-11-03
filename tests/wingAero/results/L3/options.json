@@ -1,0 +1,124 @@
+{
+  "solverName": "DAHisaFoam",
+  "designSurfaces": [
+    "wing"
+  ],
+  "primalMinResTol": 1e-08,
+  "primalMinResTolDiff": 1.0,
+  "printInterval": 20,
+  "normalizeStates": {
+    "U": 254.60282277566375,
+    "p": 26499.89786492552,
+    "T": 223.25209264797854,
+    "nuTilda": 3.524746350885555e-05,
+    "phi": 1.0
+  },
+  "primalBC": {
+    "useWallFunction": true,
+    "U0": {
+      "variable": "U",
+      "patches": [
+        "inout"
+      ],
+      "value": [
+        254.44772561516686,
+        0.0,
+        8.885510373906715
+      ]
+    },
+    "p0": {
+      "variable": "p",
+      "patches": [
+        "inout"
+      ],
+      "value": [
+        26499.89786492552
+      ]
+    },
+    "T0": {
+      "variable": "T",
+      "patches": [
+        "inout"
+      ],
+      "value": [
+        223.25209264797854
+      ]
+    },
+    "nuTilda0": {
+      "variable": "nuTilda",
+      "patches": [
+        "inout"
+      ],
+      "value": [
+        3.524746350885555e-05
+      ]
+    }
+  },
+  "checkMeshThreshold": {
+    "maxAspectRatio": 100000.0,
+    "maxNonOrth": 90.0,
+    "maxSkewness": 4.0,
+    "maxIncorrectlyOrientedFaces": 0
+  },
+  "inputInfo": {
+    "patchV": {
+      "type": "patchVelocity",
+      "patches": [
+        "inout"
+      ],
+      "flowAxis": "x",
+      "normalAxis": "z",
+      "components": [
+        "solver",
+        "function"
+      ]
+    }
+  },
+  "function": {
+    "cd": {
+      "type": "force",
+      "source": "patchToFace",
+      "patches": [
+        "wing"
+      ],
+      "directionMode": "parallelToFlow",
+      "patchVelocityInputName": "patchV",
+      "scale": 1.639866567307986e-06
+    },
+    "cl": {
+      "type": "force",
+      "source": "patchToFace",
+      "patches": [
+        "wing"
+      ],
+      "directionMode": "normalToFlow",
+      "patchVelocityInputName": "patchV",
+      "scale": 1.639866567307986e-06
+    }
+  },
+  "adjEqnOption": {
+    "gmresRestart": 100,
+    "gmresMaxIters": 2000,
+    "gmresRelTol": 1e-08,
+    "gmresAbsTol": 1e-13,
+    "pcFillLevel": 1,
+    "jacMatReOrdering": "rcm",
+    "asmOverlap": 1,
+    "hisaPCFlux": 1,
+    "hisaForceJSTFlux": 0,
+    "hisaRemoveTauMCOff": 1
+  },
+  "adjPartDerivFDStep": {
+    "State": 1e-07
+  },
+  "primalInitCondition": {
+    "U": [
+      254.44772561516686,
+      0.0,
+      8.885510373906715
+    ],
+    "p": 26499.89786492552,
+    "T": 223.25209264797854,
+    "nuTilda": 3.524746350885555e-05
+  }
+}

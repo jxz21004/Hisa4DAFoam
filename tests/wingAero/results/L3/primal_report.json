@@ -1,0 +1,34 @@
+{
+  "alpha": 2.0,
+  "primal_fail": 0,
+  "raw_residual_max": 112767.25902285706,
+  "raw_residual_l2": 443471.6625353722,
+  "primal_seconds": 78.1278963370005,
+  "cells": 3024,
+  "primal_iterations": 2000,
+  "temperature_min": 179.60544373218983,
+  "temperature_max": 321.3527985605312,
+  "functions": {
+    "cd": 0.13034179401435264,
+    "cl": 0.37721251832419733
+  },
+  "loaded_libraries": {
+    "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolverADR.so": "28ccca9edc41241fccd05a05740f2810f31c5c32125e184b5aff210193c11df4",
+    "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolver.so": "c67ba3c95dcfe27d75631a469c37ac8ac24516125ccc752cce45288cf673ae63"
+  },
+  "accepted": false,
+  "gradient_verified": false,
+  "initialization": "uniform freestream",
+  "adjoint_settings_configured_but_not_run": {
+    "gmresRestart": 100,
+    "gmresMaxIters": 2000,
+    "gmresRelTol": 1e-08,
+    "gmresAbsTol": 1e-13,
+    "pcFillLevel": 1,
+    "jacMatReOrdering": "rcm",
+    "asmOverlap": 1,
+    "hisaPCFlux": 1,
+    "hisaForceJSTFlux": 0,
+    "hisaRemoveTauMCOff": 1
+  }
+}

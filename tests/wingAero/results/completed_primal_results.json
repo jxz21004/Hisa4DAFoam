@@ -1,0 +1,143 @@
+[
+  {
+    "alpha": 2.0,
+    "primal_fail": 0,
+    "raw_residual_max": 112767.25902285706,
+    "raw_residual_l2": 443471.6625353722,
+    "primal_seconds": 78.1278963370005,
+    "cells": 3024,
+    "primal_iterations": 2000,
+    "temperature_min": 179.60544373218983,
+    "temperature_max": 321.3527985605312,
+    "functions": {
+      "cd": 0.13034179401435264,
+      "cl": 0.37721251832419733
+    },
+    "loaded_libraries": {
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolverADR.so": "28ccca9edc41241fccd05a05740f2810f31c5c32125e184b5aff210193c11df4",
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolver.so": "c67ba3c95dcfe27d75631a469c37ac8ac24516125ccc752cce45288cf673ae63"
+    },
+    "accepted": false,
+    "gradient_verified": false,
+    "initialization": "uniform freestream",
+    "adjoint_settings_configured_but_not_run": {
+      "gmresRestart": 100,
+      "gmresMaxIters": 2000,
+      "gmresRelTol": 1e-08,
+      "gmresAbsTol": 1e-13,
+      "pcFillLevel": 1,
+      "jacMatReOrdering": "rcm",
+      "asmOverlap": 1,
+      "hisaPCFlux": 1,
+      "hisaForceJSTFlux": 0,
+      "hisaRemoveTauMCOff": 1
+    },
+    "case": "L3",
+    "cumulative_primal_iterations": 2000,
+    "gmres_subspace": 8,
+    "gmres_restart_cycles_total": 2000,
+    "gmres_krylov_steps_total": 16000,
+    "gmres_max_restart_cycles_per_solve": 1,
+    "primal_preconditioner": "LUSGS; LaxFriedrichs inviscid Jacobian + laplacian viscous Jacobian + pseudo-time diagonal",
+    "primal_coupled_matrix_size": 15120,
+    "configured_adjoint_matrix_size": 18144,
+    "final_100_hisa_initial_residual_mean": 0.018719572320046115,
+    "final_100_hisa_initial_residual_min": 0.01862201270970838,
+    "final_100_hisa_initial_residual_max": 0.01878940270585512,
+    "temperature_clipping_messages": 0
+  },
+  {
+    "alpha": 2.0,
+    "primal_fail": 0,
+    "raw_residual_max": 36718.35427600553,
+    "raw_residual_l2": 290457.0913087125,
+    "primal_seconds": 722.4650738420005,
+    "cells": 24192,
+    "primal_iterations": 2000,
+    "temperature_min": 198.54807575238382,
+    "temperature_max": 299.5608346524784,
+    "functions": {
+      "cd": 0.06713729352936368,
+      "cl": 0.22400091541702247
+    },
+    "loaded_libraries": {
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolverADR.so": "28ccca9edc41241fccd05a05740f2810f31c5c32125e184b5aff210193c11df4",
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolver.so": "c67ba3c95dcfe27d75631a469c37ac8ac24516125ccc752cce45288cf673ae63"
+    },
+    "accepted": false,
+    "gradient_verified": false,
+    "initialization": "uniform freestream",
+    "adjoint_settings_configured_but_not_run": {
+      "gmresRestart": 100,
+      "gmresMaxIters": 2000,
+      "gmresRelTol": 1e-08,
+      "gmresAbsTol": 1e-13,
+      "pcFillLevel": 1,
+      "jacMatReOrdering": "rcm",
+      "asmOverlap": 1,
+      "hisaPCFlux": 1,
+      "hisaForceJSTFlux": 0,
+      "hisaRemoveTauMCOff": 1
+    },
+    "case": "L2",
+    "cumulative_primal_iterations": 2000,
+    "gmres_subspace": 8,
+    "gmres_restart_cycles_total": 2000,
+    "gmres_krylov_steps_total": 16000,
+    "gmres_max_restart_cycles_per_solve": 1,
+    "primal_preconditioner": "LUSGS; LaxFriedrichs inviscid Jacobian + laplacian viscous Jacobian + pseudo-time diagonal",
+    "primal_coupled_matrix_size": 120960,
+    "configured_adjoint_matrix_size": 145152,
+    "final_100_hisa_initial_residual_mean": 0.0029800262832344084,
+    "final_100_hisa_initial_residual_min": 0.0029654507132292895,
+    "final_100_hisa_initial_residual_max": 0.0029973646740159335,
+    "temperature_clipping_messages": 0
+  },
+  {
+    "alpha": 2.0,
+    "primal_fail": 0,
+    "raw_residual_max": 27370.03201244607,
+    "raw_residual_l2": 78073.35644616216,
+    "primal_seconds": 220.56433289199958,
+    "cells": 3024,
+    "primal_iterations": 2000,
+    "temperature_min": 182.53399819446315,
+    "temperature_max": 323.3882115429496,
+    "functions": {
+      "cd": 0.12981412201614795,
+      "cl": 0.37373707737183354
+    },
+    "loaded_libraries": {
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolverADR.so": "28ccca9edc41241fccd05a05740f2810f31c5c32125e184b5aff210193c11df4",
+      "/mdouser/test_aerostructure/dafoam_case/validation/hisa_ac05bed/build/lib/libHisaSolver.so": "c67ba3c95dcfe27d75631a469c37ac8ac24516125ccc752cce45288cf673ae63"
+    },
+    "accepted": false,
+    "gradient_verified": false,
+    "initialization": "saved fields",
+    "adjoint_settings_configured_but_not_run": {
+      "gmresRestart": 100,
+      "gmresMaxIters": 2000,
+      "gmresRelTol": 1e-08,
+      "gmresAbsTol": 1e-13,
+      "pcFillLevel": 1,
+      "jacMatReOrdering": "rcm",
+      "asmOverlap": 1,
+      "hisaPCFlux": 1,
+      "hisaForceJSTFlux": 0,
+      "hisaRemoveTauMCOff": 1
+    },
+    "case": "L3_lowCFL_clean",
+    "cumulative_primal_iterations": 4000,
+    "gmres_subspace": 32,
+    "gmres_restart_cycles_total": 2000,
+    "gmres_krylov_steps_total": 64000,
+    "gmres_max_restart_cycles_per_solve": 1,
+    "primal_preconditioner": "LUSGS; LaxFriedrichs inviscid Jacobian + laplacian viscous Jacobian + pseudo-time diagonal",
+    "primal_coupled_matrix_size": 15120,
+    "configured_adjoint_matrix_size": 18144,
+    "final_100_hisa_initial_residual_mean": 0.000785977242585595,
+    "final_100_hisa_initial_residual_min": 0.0007659660827032803,
+    "final_100_hisa_initial_residual_max": 0.0008135620492210764,
+    "temperature_clipping_messages": 0
+  }
+]
