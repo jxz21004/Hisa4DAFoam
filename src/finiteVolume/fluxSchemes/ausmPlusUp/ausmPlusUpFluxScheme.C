@@ -257,30 +257,10 @@ void Foam::ausmPlusUpFluxScheme::calcFlux(surfaceScalarField& phi, surfaceVector
     tmp< surfaceScalarField > MDiff = -0.25*max((scalar(1.0)-M_mean()),scalar(0.0))*(p_R() - p_L())/(0.5*(rho_L()+rho_R())*sqr(c_face()));    // 0 < K_p < 1, Liou suggest 0.25
     M_mean.clear();
 
-    // Mach_1_2.ref() += MDiff();
-    Mach_1_2.ref() +=
-        calcForEachFace
-        (
-            [](const scalar& Mach_1_2, const scalar& MDiff)
-            {
-                if
-                (
-                    (Mach_1_2 > 0.0 && Mach_1_2 + MDiff <= 0.0) ||
-                    (Mach_1_2 < 0.0 && Mach_1_2 + MDiff >= 0.0)
-                )
-                {
-                    scalar returnVal = 0.2*MDiff;
-                    return returnVal;
-                    //return 0.2*MDiff;
-                }
-                else
-                {
-                    return MDiff;
-                }
-            },
-            Mach_1_2(),
-            MDiff()
-        );
+    // Apply the pressure correction continuously. Reducing it only when
+    // it reverses the advective Mach number introduces a finite jump at
+    // Mach_1_2 + MDiff == 0 (and at Mach_1_2 == 0).
+    Mach_1_2.ref() += MDiff();
 
     MDiff.clear();
 

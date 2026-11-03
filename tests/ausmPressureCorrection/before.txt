@@ -1,0 +1,29 @@
+FFF.
+======================================================================
+FAIL: test_continuous_when_pressure_cancels_advection (__main__.PressureCorrectionTests.test_continuous_when_pressure_cancels_advection)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mdouser/test_aerostructure/Hisa4DAFoam/tests/ausmPressureCorrection/test_continuity.py", line 50, in test_continuous_when_pressure_cancels_advection
+    self.assertLess(abs(b-a),3*eps, f'finite jump at mass-flux reversal: {a}, {b}')
+AssertionError: 0.079999998 not less than 3.0000000000000004e-09 : finite jump at mass-flux reversal: -9.999999994736442e-10, -0.079999999
+
+======================================================================
+FAIL: test_continuous_when_uncorrected_mach_crosses_zero (__main__.PressureCorrectionTests.test_continuous_when_uncorrected_mach_crosses_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mdouser/test_aerostructure/Hisa4DAFoam/tests/ausmPressureCorrection/test_continuity.py", line 55, in test_continuous_when_uncorrected_mach_crosses_zero
+    self.assertLess(abs(b-a),3*eps)
+AssertionError: 0.080000002 not less than 3.0000000000000004e-09
+
+======================================================================
+FAIL: test_full_pressure_term_in_both_flow_directions (__main__.PressureCorrectionTests.test_full_pressure_term_in_both_flow_directions)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mdouser/test_aerostructure/Hisa4DAFoam/tests/ausmPressureCorrection/test_continuity.py", line 60, in test_full_pressure_term_in_both_flow_directions
+    self.assertAlmostEqual(value,m+d,places=14)
+AssertionError: 0.08 != 0.0 within 14 places (0.08 difference)
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.578s
+
+FAILED (failures=3)
