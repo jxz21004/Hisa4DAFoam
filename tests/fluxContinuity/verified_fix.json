@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "samples": [
+    {
+      "epsilon_pressure_Pa": 0.0001,
+      "energy_residual_jump_max": 0.002561689911999565
+    },
+    {
+      "epsilon_pressure_Pa": 1e-06,
+      "energy_residual_jump_max": 2.5616986931709107e-05
+    },
+    {
+      "epsilon_pressure_Pa": 1e-08,
+      "energy_residual_jump_max": 2.5605095288483426e-07
+    }
+  ],
+  "loaded_libraries": {
+    "/mdouser/test_aerostructure/dafoam_case/validation/hisa_viscous_work_fix/build/lib/libHisaSolverADR.so": "d8db8879e49fa57916adcc6e97ef3cd1749e7cb0db4b0758c5d6143bca990ba9",
+    "/mdouser/test_aerostructure/dafoam_case/validation/hisa_viscous_work_fix/build/lib/libHisaSolver.so": "5434d7359c43ef09571cb31d36066e5161b54a965457012f9392fc9bbf880fd8"
+  },
+  "scope": "Production native frozen-state residual continuity; ADR library built and loaded, not a gradient validation."
+}

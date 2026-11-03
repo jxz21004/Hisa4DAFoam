@@ -1,0 +1,10 @@
+{
+  "original_state_path": "dafoam_case/validation/hisa_gmres_rtol005_L3_2000/L3/base/final_state.npz",
+  "original_state_sha256": "8778e7e371c42a69e343eb6ffb3a222aadc08457b3e045dc38a8d2c46cdf267c",
+  "source_commit_before_fix": "4679a0e",
+  "diagnostic_build": "dafoam_case/validation/hisa_flux_probe/build",
+  "production_build": "dafoam_case/validation/hisa_viscous_work_fix/build",
+  "native_build_exit": 0,
+  "adr_build_exit": 0,
+  "production_continuity_check_passed": true
+}

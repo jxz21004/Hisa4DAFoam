@@ -32,6 +32,7 @@ License
 #include "bound.H"
 #include "fvcSurfaceReconstruct.H"
 #include "cellFaceFunctions.H"
+#include "linear.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -296,8 +297,10 @@ void Foam::ausmPlusUpFluxScheme::calcFlux(surfaceScalarField& phi, surfaceVector
     // NOTE: According to Liou, enthalpy should be interpolated.
     surfaceScalarField rhoah_LR(rhoa_LR*(fvc::surfaceReconstruct(H(), Mach_1_2(), "reconstruct(T)")));
 
-    // Face velocity for sigmaDotU (turbulence term)
-    Up = U_f()*mesh_.magSf();
+    // Viscous work needs a continuous face velocity. Unlike convection,
+    // this term is not multiplied by mass flux: upwind switching at zero
+    // Mach would otherwise introduce a finite jump in the energy residual.
+    Up = linearInterpolate(U_)*mesh_.magSf();
     U_f.clear();
     H.clear();
 //    c_face.clear();
