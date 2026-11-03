@@ -3,13 +3,21 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import shutil
 
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('work',type=Path)
+parser.add_argument('--subspace',type=int,default=8)
+parser.add_argument('--cfl-max',type=float,default=100.)
+parser.add_argument('--iterations',type=int,default=2000)
 args=parser.parse_args()
+if args.subspace<1 or args.iterations<1:
+    parser.error('subspace and iterations must be positive')
+if not math.isfinite(args.cfl_max) or args.cfl_max<1:
+    parser.error('cfl-max must be finite and at least the initial CFL (1)')
 repo=Path(__file__).resolve().parents[2];project=repo.parent
 work=args.work.resolve();work.mkdir(parents=True,exist_ok=False)
 build=work/'build';build.mkdir()
@@ -33,10 +41,10 @@ for level in ('L3','L2'):
     s=re.sub(r'(reconstruct\((?:rho|U|T)\))\s+[^;]+;',r'\1 wVanLeer;',s)
     s=re.sub(r'viscousFaceVelocity\s+linear;','',s);p.write_text(s)
     p=case/'system/controlDict';s=p.read_text()
-    for key,value in [('endTime',2000),('writeInterval',2000)]:s=re.sub(rf'\b{key}\s+[^;]+;',f'{key} {value};',s)
+    for key,value in [('endTime',args.iterations),('writeInterval',args.iterations)]:s=re.sub(rf'\b{key}\s+[^;]+;',f'{key} {value};',s)
     s=re.sub(r'\bHisaPrintInterval\s+[^;]+;','',s);s+='\nHisaPrintInterval 1;\n';p.write_text(s)
     p=case/'system/fvSolution';s=p.read_text()
-    for key,value in [('pseudoCoNum',1),('pseudoCoNumMin',.1),('pseudoCoNumMax',100),('nKrylov',8),('maxIter',60)]:
+    for key,value in [('pseudoCoNum',1),('pseudoCoNumMin',.1),('pseudoCoNumMax',args.cfl_max),('nKrylov',args.subspace),('maxIter',60)]:
         s=re.sub(rf'\b{key}\s+[^;]+;',f'{key} {value};',s)
     p.write_text(s)
     meshes[level]={n:hashlib.sha256((case/'constant/polyMesh'/n).read_bytes()).hexdigest() for n in ('points','faces','owner','neighbour','boundary')}

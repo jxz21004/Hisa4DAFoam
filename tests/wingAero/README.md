@@ -53,3 +53,16 @@ AoA gradient accuracy result is claimed. Full logs and fields remain in
 `dafoam_case/validation/hisa_ac05bed` outside the repository.
 Configuration snapshots normalize line endings and trailing whitespace; mesh
 hashes refer to the unchanged actual input files.
+
+A higher-subspace/CFL experiment can be prepared with:
+
+```bash
+python tests/wingAero/prepare.py /absolute/path/to/new-validation --subspace 100 --cfl-max 100000
+```
+
+`--iterations` defaults to 2000. The suite reads the actual subspace from each
+case when counting Krylov steps, and records both the configured CFL limit and
+the observed CFL. Increasing the limit does not force the adaptive CFL to reach
+that limit. The new workspace run is
+`dafoam_case/validation/hisa_ac05bed_k100_cfl100000`; its eventual results must
+not be confused with the completed lower-subspace results archived above.
