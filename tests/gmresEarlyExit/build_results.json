@@ -1,0 +1,9 @@
+{
+  "scope": "native serial one-step L3 regressions; native and ADR compile/link; no steady convergence or gradient claim",
+  "libraries": {
+    "libHisaSolver.so": "e8b63f348eb831c1d2f69eef4c99db6d828ecf51a416b167c9ac78cdd11f6cae",
+    "libHisaSolverADR.so": "02e169dd84ab8cdbda09ef1777174bdfd3249000c2730e0b559b46d30e340448"
+  },
+  "native_build_exit": 0,
+  "adr_build_exit": 0
+}

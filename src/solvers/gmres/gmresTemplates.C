@@ -264,6 +264,18 @@ label gmres<nScalar, nVector>::solve
     }
 
 
+    // Keep the Arnoldi work vector intact while checking the true residual.
+    PtrList<volScalarField> sCheck(nScalar);
+    PtrList<volVectorField> vCheck(nVector);
+    forN(nScalar,j)
+    {
+        sCheck.set(j, new volScalarField("gmresResidualCheck", sTmp[j]));
+    }
+    forN(nVector,j)
+    {
+        vCheck.set(j, new volVectorField("gmresResidualCheck", vTmp[j]));
+    }
+
     // Allocate Krylov vectors
     List<PtrList<volScalarField > > sVPtr(nDirs);
     List<PtrList<volVectorField > > vVPtr(nDirs);
@@ -381,6 +393,7 @@ label gmres<nScalar, nVector>::solve
     // Solver admin
     bool solverStop = false;
     label solverIter = 0;
+    label krylovSteps = 0;
 
     // Initialisation
 
@@ -425,7 +438,7 @@ label gmres<nScalar, nVector>::solve
             {
                 Info<< "  GMRES iteration: " << solverIter << "   Residual: ";
                 Info<< finalRes;
-                Info<< endl;
+                Info<< "   Krylov steps: " << krylovSteps << endl;
             }
         }
 
@@ -456,6 +469,7 @@ label gmres<nScalar, nVector>::solve
 
         // Set initial rhs and bh[0] = beta
         bh = 0.0;
+        yh = 0.0;
 
         for (label i = 0; i < nDirs; i++)				// Search directions
         {
@@ -497,18 +511,9 @@ label gmres<nScalar, nVector>::solve
                 vTmp[j].primitiveFieldRef() /= beta;
             }
 
-            // Apply Givens rotation to previous row.
             if (i == 0)
             {
-                bh[0] = beta;						    // beta e_1
-            }
-            else
-            {
-                givensRotation(H[i-1][i-1], beta, c[i-1], s[i-1]);
-                const scalar bhi = bh[i-1];
-                bh[i-1] = c[i-1]*bhi - s[i-1]*bh[i];
-                bh[i] = s[i-1]*bhi + c[i-1]*bh[i];
-                H[i-1][i-1] = c[i-1]*H[i-1][i-1] - s[i-1]*beta;
+                bh[0] = beta;
             }
 
             // Gram-Schmidt step
@@ -573,88 +578,105 @@ label gmres<nScalar, nVector>::solve
                 H[j+1][i] = s[j]*Hji + c[j]*H[j+1][i];
             }
 
-        }
-
-        if (Pstream::parRun() && !Pstream::finishedRequest(reduceRequest[0]))
-        {
-            Pstream::waitRequest(reduceRequest[0]);
-        }
-        beta = sqrt(beta);
-
-        // Apply Givens rotation to final row
-        label i = nDirs;
-        givensRotation(H[i-1][i-1], beta, c[i-1], s[i-1]);
-        const scalar bhi = bh[i-1];
-        bh[i-1] = c[i-1]*bhi - s[i-1]*bh[i];
-        bh[i] = s[i-1]*bhi + c[i-1]*bh[i];
-        H[i-1][i-1] = c[i-1]*H[i-1][i-1] - s[i-1]*beta;
-
-        // Back substitute to solve Hy = b
-        for (label i = nDirs - 1; i >= 0; i--)
-        {
-            scalar sum = bh[i];
-
-            for (label j = i + 1; j < nDirs; j++)
+            // Finish this column before testing convergence. The original
+            // implementation deferred this rotation until the next direction.
+            if (Pstream::parRun() && !Pstream::finishedRequest(reduceRequest[0]))
             {
-                sum -= H[i][j]*yh[j];
+                Pstream::waitRequest(reduceRequest[0]);
+            }
+            const scalar nextNorm = sqrt(beta);
+            givensRotation(H[i][i], nextNorm, c[i], s[i]);
+            const scalar bhi = bh[i];
+            bh[i] = c[i]*bhi - s[i]*bh[i+1];
+            bh[i+1] = s[i]*bhi + c[i]*bh[i+1];
+            H[i][i] = c[i]*H[i][i] - s[i]*nextNorm;
+            const label activeDirs = i + 1;
+            const scalarField previousY(yh);
+
+            // Back substitute to solve Hy = b
+            for (label i = activeDirs - 1; i >= 0; i--)
+            {
+                scalar sum = bh[i];
+
+                for (label j = i + 1; j < activeDirs; j++)
+                {
+                    sum -= H[i][j]*yh[j];
+                }
+
+                yh[i] = sum/stabilise(H[i][i], VSMALL);         // In case of zero initial residual
             }
 
-            yh[i] = sum/stabilise(H[i][i], VSMALL);         // In case of zero initial residual
-        }
-
-        // Update solution
-        for (label i = 0; i < nDirs; i++)
-        {
-            const PtrList<volScalarField>& sVi = sVPtr[i];
-            const PtrList<volVectorField>& vVi = vVPtr[i];
-            const scalar& yi = yh[i];
-
-            forN(nScalar,j)                                 // \Delta U = \Delta U_0 + \sum v_i z_i
+            // Update solution
+            for (label i = 0; i < activeDirs; i++)
             {
-                dsW[j].primitiveFieldRef() += yi*sVi[j].primitiveField();
+                const PtrList<volScalarField>& sVi = sVPtr[i];
+                const PtrList<volVectorField>& vVi = vVPtr[i];
+                const scalar yi = yh[i] - previousY[i];
+
+                forN(nScalar,j)                                 // \Delta U = \Delta U_0 + \sum v_i z_i
+                {
+                    dsW[j].primitiveFieldRef() += yi*sVi[j].primitiveField();
+                }
+                forN(nVector,j)
+                {
+                    dvW[j].primitiveFieldRef() += yi*vVi[j].primitiveField();
+                }
+
+            }
+
+            // Re-calculate the residual
+            this->jacobian_.matrixMul(dsW, dvW, sCheck, vCheck);
+
+            forN(nScalar,j)
+            {
+                forAll(sCheck[j], iCell)
+                {
+                    sCheck[j][iCell] = sR[j][iCell] - sCheck[j][iCell];
+                }
             }
             forN(nVector,j)
             {
-                dvW[j].primitiveFieldRef() += yi*vVi[j].primitiveField();
-            }
-
-        }
-
-        // Re-calculate the residual
-        this->jacobian_.matrixMul(dsW, dvW, sTmp, vTmp);
-
-        forN(nScalar,j)
-        {
-            forAll(sTmp[j], iCell)
-            {
-                sTmp[j][iCell] = sR[j][iCell] - sTmp[j][iCell];
-            }
-        }
-        forN(nVector,j)
-        {
-            forAll(vTmp[j], iCell)
-            {
-                vTmp[j][iCell] = vR[j][iCell] - vTmp[j][iCell];
-            }
-        }
-        forN(nScalar,i)
-        {
-            finalRes.setScalar(i, gSumMag(sTmp[i].primitiveField()) / sNormFactor[i]);
-        }
-        forN(nVector,i)
-        {
-            vector res = gSumCmptMag(vTmp[i].primitiveField())/vNormFactor[i];
-            // Zero the residual in non-solved directions
-            vector::labelType validComponents = this->mesh_.solutionD(); //-1 for empty directions
-            forAll(validComponents, cmpt)
-            {
-                if (validComponents[cmpt] == -1)
+                forAll(vCheck[j], iCell)
                 {
-                    res[cmpt] = 0.0;
+                    vCheck[j][iCell] = vR[j][iCell] - vCheck[j][iCell];
                 }
             }
-            finalRes.setVector(i, res);
+            forN(nScalar,i)
+            {
+                finalRes.setScalar(i, gSumMag(sCheck[i].primitiveField()) / sNormFactor[i]);
+            }
+            forN(nVector,i)
+            {
+                vector res = gSumCmptMag(vCheck[i].primitiveField())/vNormFactor[i];
+                // Zero the residual in non-solved directions
+                vector::labelType validComponents = this->mesh_.solutionD(); //-1 for empty directions
+                forAll(validComponents, cmpt)
+                {
+                    if (validComponents[cmpt] == -1)
+                    {
+                        res[cmpt] = 0.0;
+                    }
+                }
+                finalRes.setVector(i, res);
+            }
+
+            ++krylovSteps;
+            if
+            (
+                max(finalRes/tol) < 1.0
+             || max(finalRes/(initRes+ROOTVSMALL)/(tolRel+ROOTVSMALL)) < 1.0
+             || nextNorm <= VSMALL
+            )
+            {
+                // Breakdown ends this cycle, but only the true residual
+                // above can declare convergence at the outer-loop check.
+                break;
+            }
         }
+
+        // Restart from the true residual, not the Arnoldi work vector.
+        forN(nScalar,j) sTmp[j].primitiveFieldRef() = sCheck[j].primitiveField();
+        forN(nVector,j) vTmp[j].primitiveFieldRef() = vCheck[j].primitiveField();
 
         solverIter++;
 

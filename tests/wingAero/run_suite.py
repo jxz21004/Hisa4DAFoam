@@ -33,8 +33,9 @@ def run(case,alpha=2.,restart=False,adjoint=False):
     solution=(case/'system/fvSolution').read_text()
     subspace=int(re.search(r'\bnKrylov\s+(\d+)\s*;',solution)[1])
     cfl=[float(value) for value in re.findall(r'^Pseudo Courant No:\s*([^\s]+)',text,re.M)]
+    actual_steps=[int(n) for n in re.findall(r'Krylov steps:\s*(\d+)',text)]
     stats={'exit_code':code,'gmres_restart_cycles_total':sum(cycles),'gmres_subspace':subspace,
-           'gmres_krylov_steps_total':subspace*sum(cycles),'gmres_max_restart_cycles_per_solve':max(cycles,default=0),
+           'gmres_krylov_steps_total':sum(actual_steps) if actual_steps else subspace*sum(cycles),'gmres_max_restart_cycles_per_solve':max(cycles,default=0),
            'configured_cfl_max':float(re.search(r'\bpseudoCoNumMax\s+([^;]+);',solution)[1]),
            'actual_cfl_max':max(cfl,default=None),'actual_cfl_final':cfl[-1] if cfl else None,
            'temperature_clipping_messages':len(re.findall(r'bound.*[Tt]emperature|[Tt]emperature.*bound|bounding T',text))}
