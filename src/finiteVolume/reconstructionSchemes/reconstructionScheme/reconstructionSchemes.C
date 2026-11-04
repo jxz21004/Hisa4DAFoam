@@ -65,6 +65,24 @@ makeBaseReconstructionScheme(tensor)
 // vectors and tensors
 makeLimitedReconstructionScheme(Minmod, MinmodLimiter)
 
+// Piecewise-constant left/right states for controlled reconstruction audits.
+// Zero limiter leaves owner/neighbour values on internal faces; physical
+// boundary handling remains in the existing reconstruction implementation.
+template<class LimiterFunc>
+class firstOrderLimiter : public LimiterFunc
+{
+public:
+    firstOrderLimiter(Istream&) {}
+    scalar limiter
+    (
+        const scalar, const scalar,
+        const typename LimiterFunc::phiType&, const typename LimiterFunc::phiType&,
+        const typename LimiterFunc::gradPhiType&, const typename LimiterFunc::gradPhiType&,
+        const vector&
+    ) const { return scalar(0); }
+};
+makeLimitedReconstructionScheme(firstOrder, firstOrderLimiter)
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam

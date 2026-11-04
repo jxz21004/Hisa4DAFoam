@@ -13,8 +13,16 @@ const bool oldBounded = bounded_;
 sol->solve(scalarVars_, vectorVars_, scalarResiduals_, vectorResiduals_, res_);
 const volScalarField solvedRho("auditSolvedRho",rho), solvedE("auditSolvedE",rhoE);
 const volVectorField solvedMom("auditSolvedMom",rhoU);
-const scalarField dr(rho.primitiveField()-bRho.primitiveField()), de(rhoE.primitiveField()-bE.primitiveField());
-const vectorField dm(rhoU.primitiveField()-bMom.primitiveField());
+scalarField dr(rho.primitiveField()-bRho.primitiveField()), de(rhoE.primitiveField()-bE.primitiveField());
+vectorField dm(rhoU.primitiveField()-bMom.primitiveField());
+const bool storedDirection = mfDict.lookupOrDefault<bool>("directionAuditUseStored", false);
+if (storedDirection)
+{
+    const volScalarField rd(IOobject("auditDeltaRho",runTime.constant(),mesh,IOobject::MUST_READ,IOobject::NO_WRITE),mesh);
+    const volScalarField ed(IOobject("auditDeltaE",runTime.constant(),mesh,IOobject::MUST_READ,IOobject::NO_WRITE),mesh);
+    const volVectorField md(IOobject("auditDeltaMom",runTime.constant(),mesh,IOobject::MUST_READ,IOobject::NO_WRITE),mesh);
+    dr=rd.primitiveField(); de=ed.primitiveField(); dm=md.primitiveField();
+}
 PtrList<volScalarField> ds(2), ar(2);
 PtrList<volVectorField> dv(1), am(1);
 ds.set(0,new volScalarField("auditDr",bRho)); ds.set(1,new volScalarField("auditDe",bE));
@@ -22,6 +30,12 @@ dv.set(0,new volVectorField("auditDm",bMom));
 ar.set(0,new volScalarField("auditAr",bR)); ar.set(1,new volScalarField("auditAe",bER));
 am.set(0,new volVectorField("auditAm",bMR));
 ds[0].primitiveFieldRef()=dr; ds[1].primitiveFieldRef()=de; dv[0].primitiveFieldRef()=dm;
+if (!storedDirection)
+{
+    ds[0].rename("auditDeltaRho"); ds[1].rename("auditDeltaE"); dv[0].rename("auditDeltaMom");
+    ds[0].instance()=runTime.constant(); ds[1].instance()=runTime.constant(); dv[0].instance()=runTime.constant();
+    ds[0].write(); ds[1].write(); dv[0].write();
+}
 sol->matrixProduct(ds,dv,ar,am);
 const scalarField jr(ddt*dr-ar[0].primitiveField()), je(ddt*de-ar[1].primitiveField());
 const vectorField jm(ddt*dm-am[0].primitiveField());
@@ -56,7 +70,10 @@ for (scalar h : {scalar(1e-3),scalar(5e-4)})
     const scalarField tr((pr-rhoR.primitiveField())/(2*h)), te((pe-rhoER.primitiveField())/(2*h));
     const vectorField tm((pm-rhoUR.primitiveField())/(2*h));
     Info << "DirectionAuditJ: h " << h << " relativeError " << norm(jr-tr,jm-tm,je-te)/max(norm(tr,tm,te),scalar(VSMALL))
-         << " trueDerivativeNorm " << norm(tr,tm,te) << endl;
+         << " trueDerivativeNorm " << norm(tr,tm,te)
+         << " densityError " << sqrt(gSum(magSqr(jr-tr)))/max(sqrt(gSum(magSqr(tr))),scalar(VSMALL))
+         << " momentumError " << sqrt(gSum(magSqr(jm-tm)))/max(sqrt(gSum(magSqr(tm))),scalar(VSMALL))
+         << " energyError " << sqrt(gSum(magSqr(je-te)))/max(sqrt(gSum(magSqr(te))),scalar(VSMALL)) << endl;
 }
 for (scalar alpha : {scalar(1),scalar(0.5),scalar(0.1),scalar(0.01)})
 {
