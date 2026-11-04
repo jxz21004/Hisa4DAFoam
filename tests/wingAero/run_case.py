@@ -60,6 +60,8 @@ if not any(p.endswith('libHisaSolver.so') for p in loaded) or not any(p.endswith
     raise RuntimeError(f'Both native and ADR patched libraries must be loaded: {loaded}')
 solver.set_solver_input({'patchV':np.array([float(ap.V),args.alpha])})
 initial_residual=None if args.probe else solver.getResiduals().copy()
+if not args.probe:
+    np.savez(case/'initial_state.npz',state=solver.getStates().copy())
 start=time.monotonic()
 if args.probe:
     solver.setStates(np.load(case/'final_state.npz')['state'])
