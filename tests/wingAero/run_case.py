@@ -13,6 +13,9 @@ parser.add_argument('--library-dir',type=Path,required=True)
 parser.add_argument('--alpha',type=float,default=2.)
 parser.add_argument('--restart',action='store_true')
 parser.add_argument('--adjoint',action='store_true')
+parser.add_argument('--allow-unconverged-adjoint',action='store_true',help='Diagnostic only; does not mark the primal or gradient accepted')
+parser.add_argument('--adjoint-restart',type=int,default=100)
+parser.add_argument('--adjoint-full-lu',action='store_true',help='Small-case diagnostic: full residual FD Jacobian with LU preconditioning')
 parser.add_argument('--probe',action='store_true',help='reload final_state.npz without primal iterations')
 args=parser.parse_args()
 case=args.case.resolve(strict=True)
@@ -36,7 +39,7 @@ options={'solverName':'DAHisaFoam','designSurfaces':['wing'],
  'checkMeshThreshold':{'maxAspectRatio':100000.,'maxNonOrth':90.,'maxSkewness':4.,'maxIncorrectlyOrientedFaces':0},
  'inputInfo':{'patchV':{'type':'patchVelocity','patches':['inout'],'flowAxis':'x','normalAxis':'z','components':['solver','function']}},
  'function':{},
- 'adjEqnOption':{'gmresRestart':100,'gmresMaxIters':2000,'gmresRelTol':1e-8,'gmresAbsTol':1e-13,
+ 'adjEqnOption':{'gmresRestart':args.adjoint_restart,'gmresMaxIters':2000,'gmresRelTol':1e-8,'gmresAbsTol':1e-13,
                  'pcFillLevel':1,'jacMatReOrdering':'rcm','asmOverlap':1,
                  'hisaPCFlux':1,'hisaForceJSTFlux':0,'hisaRemoveTauMCOff':1},
  'adjPartDerivFDStep':{'State':1e-7}}
@@ -85,37 +88,45 @@ np.savez(case/'final_state.npz',state=state,residual=residual)
 (case/('probe_report.json' if args.probe else 'primal_report.json')).write_text(json.dumps(report,indent=2)+'\n')
 print('VALIDATION_REPORT '+json.dumps(report),flush=True)
 
-if args.adjoint and not report['accepted']:
+if args.adjoint and not report['accepted'] and not args.allow_unconverged_adjoint:
     (case/'adjoint_report.json').write_text(json.dumps({'executed':False,'reason':'Base primal failed raw residual gate','gradient_verified':False},indent=2)+'\n')
-if args.adjoint and report['accepted']:
+if args.adjoint and (report['accepted'] or args.allow_unconverged_adjoint):
     from petsc4py import PETSc
     solver.setStates(state)
     patch_velocity=np.array([float(ap.V),args.alpha])
     solver.set_solver_input({'patchV':patch_velocity})
     solver.solver.runColoring()
     pc_matrix=PETSc.Mat().create(MPI.COMM_WORLD)
-    solver.solver.calcdRdWT(1,pc_matrix)
+    solver.solver.calcdRdWT(0 if args.adjoint_full_lu else 1,pc_matrix)
+    solver.solverAD.initializedRdWTMatrixFree()
     ksp=PETSc.KSP().create(MPI.COMM_WORLD)
     solver.solverAD.createMLRKSPMatrixFree(pc_matrix,ksp)
-    adj={'executed':True,'gmres_restart':options['adjEqnOption']['gmresRestart'],
-         'pc_matrix':'calcdRdWT(isPC=1): colored finite-difference approximate transposed residual Jacobian',
+    if args.adjoint_full_lu:
+        ksp.getPC().setType('lu')
+        if PETSc.Sys.hasExternalPackage('mumps'):
+            ksp.getPC().setFactorSolverType('mumps')
+    adj={'executed':True,'unconverged_base_diagnostic':not report['accepted'],'gmres_restart':options['adjEqnOption']['gmresRestart'],
+         'pc_matrix':'calcdRdWT(isPC=0): full-residual colored FD Jacobian transpose' if args.adjoint_full_lu else 'calcdRdWT(isPC=1): colored finite-difference approximate transposed residual Jacobian',
          'pc_shape':pc_matrix.getSize(),'pc_nonzeros':pc_matrix.getInfo()['nz_used'],
-         'preconditioning':'right ASM(overlap=1), local ILU(1), RCM ordering',
-         'pc_residual':'first-order LaxFriedrichs convection; off-diagonal tauMC removed; hisaForceJSTFlux=0',
+         'preconditioning':'right LU of full-residual FD matrix (small-case diagnostic)' if args.adjoint_full_lu else 'right ASM(overlap=1), local ILU(1), RCM ordering',
+         'pc_residual':'same high-order residual as AD operator' if args.adjoint_full_lu else 'first-order LaxFriedrichs convection; off-diagonal tauMC removed; hisaForceJSTFlux=0',
          'gradient_verified':False,'functions':{}}
     for name in ('cd','cl'):
         rhs=np.zeros(len(state))
         solver.solverAD.calcJacTVecProduct('states','stateVar',state,name,'function',np.ones(1),rhs)
         rhs_vec=solver.array2Vec(rhs); psi=rhs_vec.duplicate(); psi.set(0.)
+        solve_start=time.monotonic()
         fail=solver.solverAD.solveLinearEqn(ksp,rhs_vec,psi)
+        solve_seconds=time.monotonic()-solve_start
         seed=psi.getArray().copy(); product=np.zeros(len(state))
         solver.solverAD.calcJacTVecProduct('states','stateVar',state,'residuals','residual',seed,product)
         explicit=np.zeros(2);implicit=np.zeros(2)
         solver.solverAD.calcJacTVecProduct('patchV','patchVelocity',patch_velocity,name,'function',np.ones(1),explicit)
         solver.solverAD.calcJacTVecProduct('patchV','patchVelocity',patch_velocity,'residuals','residual',seed,implicit)
-        adj['functions'][name]={'d_dalpha':float((explicit-implicit)[1]),'linear_fail':int(fail),
+        adj['functions'][name]={'d_dalpha':float((explicit-implicit)[1]),'linear_fail':int(fail),'solve_seconds':solve_seconds,
           'gmres_iterations':ksp.getIterationNumber(),'ksp_reason':int(ksp.getConvergedReason()),
           'true_linear_relative_residual':float(np.linalg.norm(product-rhs)/max(np.linalg.norm(rhs),1e-30))}
         (case/'adjoint_report.json').write_text(json.dumps(adj,indent=2)+'\n')
+        np.savez(case/('adjoint_'+name+'.npz'),psi=seed,rhs=rhs,product=product)
         rhs_vec.destroy();psi.destroy()
     ksp.destroy();pc_matrix.destroy()
