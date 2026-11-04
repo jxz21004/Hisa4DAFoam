@@ -68,7 +68,13 @@ discreteLaxFriedrichs::discreteLaxFriedrichs
 
 void discreteLaxFriedrichs::addFluxTerms(compressibleJacobianMatrix& jacobian)
 {
+#if OPENFOAM >= 1712
+    surfaceScalarField w(mesh_.weights());
+    // Interpolation weights have no face orientation (same as laxFriedrichs).
+    w.setOriented(false);
+#else
     const surfaceScalarField& w(mesh_.weights());
+#endif
     const volScalarField& rho(rho_);
     const volVectorField& rhoU(rhoU_);
     const volScalarField& rhoE(rhoE_);
@@ -109,6 +115,9 @@ void discreteLaxFriedrichs::addFluxTerms(compressibleJacobianMatrix& jacobian)
     #endif
         )->weights(U)
     );
+#if OPENFOAM >= 1712
+    wu.setOriented(false);
+#endif
     surfaceVectorField Uf(surfaceInterpolationScheme<vector>::interpolate(U, wu));
 
 //    dMomByRho = fvj::div(w, -UU()) + fvj::grad(w, theta());
@@ -131,6 +140,9 @@ void discreteLaxFriedrichs::addFluxTerms(compressibleJacobianMatrix& jacobian)
     #endif
         )->weights(rhoE/rho-0.5*magSqr(U))
     );
+#if OPENFOAM >= 1712
+    we.setOriented(false);
+#endif
     surfaceScalarField ef(surfaceInterpolationScheme<scalar>::interpolate(rhoE/rho-0.5*magSqr(U), we));
     surfaceVectorField UbyRhof
     (
@@ -149,6 +161,9 @@ void discreteLaxFriedrichs::addFluxTerms(compressibleJacobianMatrix& jacobian)
     #endif
         )->weights(rho)
     );
+#if OPENFOAM >= 1712
+    wrho.setOriented(false);
+#endif
     surfaceScalarField rhof(surfaceInterpolationScheme<scalar>::interpolate(rho, wrho));
 
 //    dEnergyByRho = fvj::div(w, -gammaE()*U+2*theta()*U);
