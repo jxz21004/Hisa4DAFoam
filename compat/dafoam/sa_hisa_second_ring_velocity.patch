@@ -1,0 +1,11 @@
+--- a/src/adjoint/DAModel/DATurbulenceModel/DASpalartAllmaras.C
++++ b/src/adjoint/DAModel/DATurbulenceModel/DASpalartAllmaras.C
+@@ -378,7 +378,7 @@
+             {
+                 {"U", "T", pName, "nuTilda", "phi"}, // lv0
+                 {"U", "T", pName, "nuTilda"}, // lv1
+-                {"T", pName, "nuTilda"} // lv2
++                {"U", "T", pName, "nuTilda"} // lv2: high-order HiSA mass flux depends on second-ring U
+             });
+     }
+ }

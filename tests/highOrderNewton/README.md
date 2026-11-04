@@ -37,3 +37,21 @@ python tests/highOrderNewton/correct.py --case CASE --library-dir LIBDIR --itera
 
 独立矩阵前三步全部接受，L2 残差 41231.0786 → 19687.7743，最大绝对值 17566.9735 → 7636.9603。
 续算阶段由该检查点开始，重新确定并固定行尺度，结果单独保存。
+
+## 后续同一步长列检查
+
+audit_connectivity.py 用相同的前向差分步长 1e-8 核对单列，排除了差分方式不同的干扰。
+128 号单元 Ux 对第二圈 148 号单元 SA 残差的归一化导数为 -19.06416，
+而 calcdRdWT(0) 给出 0；另外多个单元也复现，详见 connectivity_report.json。
+DASpalartAllmaras::addModelResidualCon 的 compressible lv2 列表确实没有 U。
+兼容修补建议见 compat/dafoam/sa_hisa_second_ring_velocity.patch；
+该补丁尚未应用到已安装 DAFoam，也未验证重编译后的标准组装路径。
+当前独立两圈矩阵绕开该遗漏，并不等于已修复安装的 DAFoam。
+
+## 本轮完成结果
+
+两阶段共接受 15 步，试验耗时约 626 秒（不含构建及前置诊断）。
+原始残差 L2 从 41231.0786 降到 11605.3960，最大绝对值降到 4366.4538，**未收敛**。
+后期步长较小；独立有限差分矩阵在某些后续状态的方向误差也有所增大，不能把初态
+的 3.25e-6 检查结果推广为整个轨迹的雅可比误差。逐步数据及检查点汇总见 newton_summary.json。
+未运行稳态伴随及气动梯度验收。下一步需要改进高阶非线性更新及矩阵一致性，不能直接用于正式优化。

@@ -1,0 +1,10 @@
+{
+  "production_fix_commit": "923a024",
+  "initial_state": "dafoam_case/validation/hisa_stagnation_controls/high_order_from_first/L3/base/final_state.npz",
+  "last_checkpoint": "dafoam_case/validation/hisa_limited_fix/geometric_continuation/newton_state.npz",
+  "library_sha256": {
+    "libHisaSolver.so": "5beefc46d1b454e53167c8a2cb5c39d737aef67074ac6b2ec02d908b228fb696",
+    "libHisaSolverADR.so": "ddb21e691018bfdd89e2a0815c486f4b0ecd0b95f51f1950545e4223df873e05"
+  },
+  "dependency_patch_apply_check": "passed; not applied to installed DAFoam"
+}
