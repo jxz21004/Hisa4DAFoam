@@ -59,6 +59,7 @@ for line in Path('/proc/self/maps').read_text().splitlines():
 if not any(p.endswith('libHisaSolver.so') for p in loaded) or not any(p.endswith('libHisaSolverADR.so') for p in loaded):
     raise RuntimeError(f'Both native and ADR patched libraries must be loaded: {loaded}')
 solver.set_solver_input({'patchV':np.array([float(ap.V),args.alpha])})
+initial_residual=None if args.probe else solver.getResiduals().copy()
 start=time.monotonic()
 if args.probe:
     solver.setStates(np.load(case/'final_state.npz')['state'])
@@ -73,6 +74,10 @@ report={'alpha':args.alpha,'primal_fail':int(solver.primalFail),'raw_residual_ma
  'accepted':bool(solver.primalFail==0 and np.all(np.isfinite(residual)) and np.max(np.abs(residual))<1e-8),
  'gradient_verified':False,'initialization':'saved fields' if args.restart else 'uniform freestream',
  'adjoint_settings_configured_but_not_run':options['adjEqnOption']}
+if initial_residual is not None:
+    np.savez(case/'initial_residual.npz',residual=initial_residual)
+    report['initial_raw_residual_l2']=float(np.linalg.norm(initial_residual))
+    report['fixed_definition_relative_l2']=float(np.linalg.norm(residual)/max(np.linalg.norm(initial_residual),1e-300))
 np.savez(case/'final_state.npz',state=state,residual=residual)
 (case/('probe_report.json' if args.probe else 'primal_report.json')).write_text(json.dumps(report,indent=2)+'\n')
 print('VALIDATION_REPORT '+json.dumps(report),flush=True)
