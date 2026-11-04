@@ -167,6 +167,15 @@ void hisaModule::setPseudoDeltaT()
 
 void hisaModule::setPseudoCoNum()
 {
+    // The optional limited-update path owns CFL feedback after trial acceptance.
+#if FOUNDATION >= 10
+    const dictionary& flow = mesh_.solution().subDict("flowSolver");
+#else
+    const dictionary& flow = mesh_.solutionDict().subDict("flowSolver");
+#endif
+    if (flow.subOrEmptyDict("GMRES").lookupOrDefault<bool>("limitedUpdate", false))
+        return;
+
     // Switched Evolution Relaxation
     if (res_.valid())
     {

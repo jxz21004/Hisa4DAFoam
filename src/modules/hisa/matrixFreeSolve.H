@@ -1,6 +1,8 @@
-// Optional steady, frozen-turbulence matrix-free flow solve. Off by default.
+// Optional bounded or matrix-free steady flow solve. Both off by default.
 const dictionary& mfDict = dict.subOrEmptyDict(solverType);
-if (!mfDict.lookupOrDefault<bool>("matrixFree", false))
+const bool matrixFree = mfDict.lookupOrDefault<bool>("matrixFree", false);
+const bool limitedUpdate = mfDict.lookupOrDefault<bool>("limitedUpdate", false);
+if (!matrixFree && !limitedUpdate)
 {
     sol->solve(scalarVars_, vectorVars_, scalarResiduals_, vectorResiduals_, res_);
 }
@@ -8,7 +10,7 @@ else
 {
     if (!steadyState_ || mesh.moving() || solverType != "GMRES")
     {
-        FatalErrorInFunction << "matrixFree requires steady GMRES on a fixed mesh"
+        FatalErrorInFunction << "matrixFree/limitedUpdate requires steady GMRES on a fixed mesh"
             << exit(FatalError);
     }
     const scalar epsilon = mfDict.lookupOrDefault<scalar>("matrixFreeEpsilon", 1e-6);
@@ -64,6 +66,7 @@ else
         FatalErrorInFunction << "matrixFree zero-step residual drift " << repeatError << exit(FatalError);
     }
     rhoR = baseR; rhoUR = baseMR; rhoER = baseER;
+    if (matrixFree)
     sol->setMatrixProduct
     (
         [&](PtrList<volScalarField>& sv, PtrList<volVectorField>& vv,
@@ -117,9 +120,27 @@ else
     const scalarField de(rhoE.primitiveField()-baseE.primitiveField());
     const vectorField dm(rhoU.primitiveField()-baseMom.primitiveField());
     scalar alpha = 1;
+    const scalar updateLimit = mfDict.lookupOrDefault<scalar>("updateLimit", 0.2);
+    if (limitedUpdate)
+    {
+        if (updateLimit <= 0 || updateLimit >= 1)
+            FatalErrorInFunction << "updateLimit must be between zero and one" << exit(FatalError);
+        const scalar change = max
+        (
+            max(gMax(mag(dr)/max(mag(baseRho.primitiveField()),scalar(rs*1e-3))),
+                gMax(mag(de)/max(mag(baseE.primitiveField()),scalar(es*1e-3)))),
+            gMax(mag(dm)/max(mag(baseMom.primitiveField()),scalar(ms*0.1)))
+        );
+        alpha = min(scalar(1), updateLimit/max(change,scalar(VSMALL)));
+    }
     bool accepted = false;
     scalar finalMerit = initialMerit;
-    const label maxTrials = mfDict.lookupOrDefault<label>("matrixFreeMaxTrials", 12);
+    const label maxTrials = limitedUpdate
+        ? mfDict.lookupOrDefault<label>("updateMaxTrials", 4)
+        : mfDict.lookupOrDefault<label>("matrixFreeMaxTrials", 12);
+    scalar pseudoMerit = initialMerit;
+    const scalarField baseInternal(baseE.primitiveField()/baseRho.primitiveField()
+        -0.5*magSqr(baseMom.primitiveField()/baseRho.primitiveField()));
     for (label trial=0; trial<maxTrials; ++trial)
     {
         scalarField trialRho(baseRho.primitiveField()+alpha*dr);
@@ -127,9 +148,20 @@ else
         scalarField trialE(baseE.primitiveField()+alpha*de);
         if (gMin(trialRho)>1e-3 && gMin(trialE - 0.5*magSqr(trialMom)/max(trialRho,scalar(1e-30)))>0)
         {
+            const scalarField trialInternal(trialE/trialRho-0.5*magSqr(trialMom/trialRho));
+            const bool physicalLimit = !limitedUpdate ||
+                gMax(mag(trialInternal-baseInternal)/max(mag(baseInternal),scalar(1))) <= updateLimit;
+            if (!physicalLimit) { alpha *= 0.5; continue; }
             evaluate(alpha, dr, dm, de);
             finalMerit = merit();
-            if (!bounded_ && finalMerit <= (1-1e-4*alpha)*initialMerit)
+            pseudoMerit = sqrt
+            (
+                gSum(magSqr(alpha*frozenDdt*dr-rhoR.primitiveField()))/sqr(rs)
+              + gSum(magSqr(alpha*frozenDdt*dm-rhoUR.primitiveField()))/sqr(ms)
+              + gSum(magSqr(alpha*frozenDdt*de-rhoER.primitiveField()))/sqr(es)
+            );
+            const scalar acceptanceMerit = limitedUpdate ? pseudoMerit : finalMerit;
+            if (!bounded_ && acceptanceMerit <= (1-1e-4*alpha)*initialMerit)
             {
                 accepted = true;
                 break;
@@ -143,7 +175,20 @@ else
         finalMerit = initialMerit;
         alpha = 0;
     }
-    Info << "MatrixFreeFlow: alpha " << alpha << " meritRatio "
+    if (limitedUpdate)
+    {
+        const scalar oldCfl = pseudoCoNum_().value();
+        scalar nextCfl = oldCfl;
+        if (!accepted || alpha < 0.25) nextCfl *= 0.5;
+        else if (alpha >= 0.8 && finalMerit < 0.99*initialMerit) nextCfl *= 1.2;
+        pseudoCoNum_().value() = max(pseudoCoNumMin_, min(pseudoCoNumMax_, nextCfl));
+        Info << "LimitedUpdate: alpha " << alpha << " steadyRatio "
+            << finalMerit/max(initialMerit,scalar(VSMALL)) << " pseudoRatio "
+            << (accepted ? pseudoMerit/ max(initialMerit,scalar(VSMALL)) : scalar(1))
+            << " residualEvaluations " << evaluations << " cfl " << oldCfl
+            << " nextCfl " << pseudoCoNum_().value() << endl;
+    }
+    Info << (matrixFree ? "MatrixFreeFlow: alpha " : "LimitedUpdateCheck: alpha ") << alpha << " meritRatio "
         << finalMerit/max(initialMerit,scalar(VSMALL)) << " residualEvaluations "
         << evaluations << " repeatError " << repeatError << endl;
 }
