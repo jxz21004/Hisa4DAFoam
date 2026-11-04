@@ -45,7 +45,7 @@ audit_connectivity.py 用相同的前向差分步长 1e-8 核对单列，排除�
 而 calcdRdWT(0) 给出 0；另外多个单元也复现，详见 connectivity_report.json。
 DASpalartAllmaras::addModelResidualCon 的 compressible lv2 列表确实没有 U。
 兼容修补建议见 compat/dafoam/sa_hisa_second_ring_velocity.patch；
-该补丁尚未应用到已安装 DAFoam，也未验证重编译后的标准组装路径。
+该补丁未应用到系统安装；已在工作区副本编译普通版/ADR，并验证标准组装列，见 connectivity_fixed_report.json。
 当前独立两圈矩阵绕开该遗漏，并不等于已修复安装的 DAFoam。
 
 ## 本轮完成结果
@@ -55,3 +55,23 @@ DASpalartAllmaras::addModelResidualCon 的 compressible lv2 列表确实没有 U
 后期步长较小；独立有限差分矩阵在某些后续状态的方向误差也有所增大，不能把初态
 的 3.25e-6 检查结果推广为整个轨迹的雅可比误差。逐步数据及检查点汇总见 newton_summary.json。
 未运行稳态伴随及气动梯度验收。下一步需要改进高阶非线性更新及矩阵一致性，不能直接用于正式优化。
+
+
+## 2026-11-04 后期停滞诊断
+
+audit_direction.py 从第 15 步状态重新组装独立中心差分矩阵，以 AD 检查真实残差
+目标函数的方向导数。归一化下降斜率为 -1.000001705，矩阵预测为 -1；
+加权梯度相对差 4.51e-6，线性求解相对残差 1.91e-14。微小步长的真实变化吻合。
+然而完整 Newton 步使固定行尺度的残差范数增为 9.255 倍，说明局部导数正确
+并不足以保证大步更新下降。尚未定位具体哪个非线性项主导这种变化。
+数据见 direction_report.json。
+
+regularization_probe.py 使用同一状态、同一固定行尺度，测试三个对角阻尼强度，
+每个候选都从原状态出发；不是连续三步，也不是原生 HiSA 时间推进或 GMRES。
+采用稀疏 LU 和 AD 方向导数的 Armijo 回溯；对角符号按流动与 SA 残差约定设置，
+这是诊断性阻尼，不是完整物理伪时间矩阵。
+最佳阻尼 0.1 接受步长 1/32，原始残差 L2 11605.396 → 11322.653，
+最大绝对值 4366.454 → 4230.579，加权范数仅下降约 0.30%，耗时 93.21 秒。
+数据见 regularization_report.json。改善有限，不能声称停滞已解决，未继续长时间迭代。
+下一步应针对高阶重构、湍流耦合及边界更新定位非线性变化，并设计自适应伪时间/信赖域更新。
+尚未完成高阶稳态收敛、L2 回归或稳态伴随梯度准确性验收。

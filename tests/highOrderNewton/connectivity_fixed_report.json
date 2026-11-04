@@ -1,0 +1,45 @@
+{
+  "loaded_dafoam": {
+    "/mdouser/test_aerostructure/dafoam_case/validation/dafoam_sa_connectivity_fix/lib/libDASolver.so": "e72253c91ccb18476fc4d448c60bac32e29671b9f818abb29b62fbee1caf4b96",
+    "/mdouser/test_aerostructure/dafoam_case/validation/dafoam_sa_connectivity_fix/lib/libDASolverADR.so": "826f44acf603acc9a2abc042a696a409cf1799620dce6741648c84fae8134eac"
+  },
+  "fd_step": 1e-08,
+  "scope": "Same forward difference and state scaling; nonzero finite-difference SA coupling absent in assembled column",
+  "columns": [
+    {
+      "column_cell": 9,
+      "component": "Ux",
+      "relative_column_error": 1.5676117075200277e-10,
+      "sa_missing_count": 0,
+      "examples": []
+    },
+    {
+      "column_cell": 123,
+      "component": "Ux",
+      "relative_column_error": 1.709332776386761e-10,
+      "sa_missing_count": 0,
+      "examples": []
+    },
+    {
+      "column_cell": 128,
+      "component": "Ux",
+      "relative_column_error": 1.6688480629892978e-10,
+      "sa_missing_count": 0,
+      "examples": []
+    },
+    {
+      "column_cell": 100,
+      "component": "Ux",
+      "relative_column_error": 4.3674967662947755e-06,
+      "sa_missing_count": 0,
+      "examples": []
+    },
+    {
+      "column_cell": 1567,
+      "component": "Ux",
+      "relative_column_error": 2.547769101228638e-09,
+      "sa_missing_count": 0,
+      "examples": []
+    }
+  ]
+}

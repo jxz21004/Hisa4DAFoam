@@ -1,0 +1,8 @@
+{
+  "native_change": 0.0,
+  "adr_change": 0.0,
+  "native_adr_max_difference": 2.6590951662797124e-12,
+  "native_adr_relative_difference": 1.0351465310556865e-16,
+  "state_change_from_unpatched": 0.0,
+  "residual_change_from_unpatched": 0.0
+}

@@ -6,10 +6,22 @@ HiSA 的质量通量由高阶左右重构计算，SA 对流使用该通量，因
 
 补丁根据本机 DAFoam 源码生成；相同差分步长的列检查已确认遗漏项，证据见
 ../../tests/highOrderNewton/connectivity_report.json。
-这是待应用、待重编译验证的依赖补丁，不会因构建 HiSA 而自动生效。
+已在工作区隔离副本中编译普通版和 ADR 版，并验证标准组装路径；不会因构建 HiSA 而自动生效。
 本次没有修改 /home/dafoamuser/dafoam 下的已安装源码或库。
 
 在单独 DAFoam checkout 中可先执行 git apply --check，再应用并构建普通版和 ADR 版。
 修改依赖表后必须重新生成着色文件；旧着色缓存不可直接沿用。
 验收须比较修复后的完整组装列与独立差分，再验证方向乘积和实际 Newton 下降。
 增加保守依赖不改变流场方程，但可能增加稀疏存储和着色工作量。
+
+
+2026-11-04 隔离构建验证：重新生成 457 色的着色，5 个 Ux 列的 SA 遗漏数均为 0，
+相同前向差分步长下最大列相对误差 4.3675e-6。普通版与 ADR 残差相对差
+1.0351e-16；同一状态的普通版残差与补丁前完全相同。
+证据：../../tests/highOrderNewton/connectivity_fixed_report.json 和 connectivity_fixed_parity.json。
+这只验证了所检查的矩阵列，不能替代全矩阵、稳态收敛及气动梯度验收。
+
+`python compat/dafoam/build_isolated.py --output NEW_DIRECTORY` 可复制本机 DAFoam
+源码与已有编译缓存，修改输出路径，并依次构建普通版和 ADR 版。目标必须尚不存在。
+运行前把 NEW_DIRECTORY/lib 放在 LD_LIBRARY_PATH 首位，并同时使用修复后的 HiSA 库；
+用 audit_connectivity.py 的 --dafoam-library-dir 参数核对实际加载库和散列值。
