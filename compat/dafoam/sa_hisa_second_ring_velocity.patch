@@ -1,11 +1,16 @@
---- a/src/adjoint/DAModel/DATurbulenceModel/DASpalartAllmaras.C
-+++ b/src/adjoint/DAModel/DATurbulenceModel/DASpalartAllmaras.C
-@@ -378,7 +378,7 @@
-             {
-                 {"U", "T", pName, "nuTilda", "phi"}, // lv0
-                 {"U", "T", pName, "nuTilda"}, // lv1
--                {"T", pName, "nuTilda"} // lv2
-+                {"U", "T", pName, "nuTilda"} // lv2: high-order HiSA mass flux depends on second-ring U
-             });
-     }
- }
+--- a/src/adjoint/DAStateInfo/DAStateInfoHisaFoam.C
++++ b/src/adjoint/DAStateInfo/DAStateInfoHisaFoam.C
+@@ -109,0 +110,13 @@
++    // HiSA reconstructs the mass flux from neighbouring cell velocities.
++    // The SA convection residual therefore depends on second-ring U even
++    // though phi is not an independent HiSA state. Keep this extension here
++    // so other solvers retain the shared turbulence-model connectivity.
++    if (stateResConInfo_.found("nuTildaRes"))
++    {
++        List<word>& secondRing = stateResConInfo_["nuTildaRes"][2];
++        if (!secondRing.found("U"))
++        {
++            secondRing.append("U");
++        }
++    }
++
