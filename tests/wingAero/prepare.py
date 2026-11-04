@@ -39,7 +39,9 @@ for level in ('L3','L2'):
         if (case/'0'/name).exists():(case/'0'/name).unlink()
     p=case/'system/fvSchemes';s=p.read_text().replace('AUSMPlusUpContinuous','AUSMPlusUp')
     s=re.sub(r'(reconstruct\((?:rho|U|T)\))\s+[^;]+;',r'\1 wVanLeer;',s)
-    s=re.sub(r'viscousFaceVelocity\s+linear;','',s);p.write_text(s)
+    s=re.sub(r'viscousFaceVelocity\s+linear;','',s)
+    # Use HiSA's AD-safe coefficient initialization for limited snGrad.
+    s=re.sub(r'\blimited(?=\s)', 'hisaLimited', s);p.write_text(s)
     p=case/'system/controlDict';s=p.read_text()
     for key,value in [('endTime',args.iterations),('writeInterval',args.iterations)]:s=re.sub(rf'\b{key}\s+[^;]+;',f'{key} {value};',s)
     s=re.sub(r'\bHisaPrintInterval\s+[^;]+;','',s);s+='\nHisaPrintInterval 1;\n';p.write_text(s)
