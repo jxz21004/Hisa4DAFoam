@@ -4,7 +4,14 @@ const bool matrixFree = mfDict.lookupOrDefault<bool>("matrixFree", false);
 const bool limitedUpdate = mfDict.lookupOrDefault<bool>("limitedUpdate", false);
 if (!matrixFree && !limitedUpdate)
 {
+    if (mfDict.lookupOrDefault<bool>("directionAudit", false))
+    {
+        #include "directionAudit.H"
+    }
+    else
+    {
     sol->solve(scalarVars_, vectorVars_, scalarResiduals_, vectorResiduals_, res_);
+    }
 }
 else
 {

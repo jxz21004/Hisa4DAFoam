@@ -73,6 +73,7 @@ report={'alpha':args.alpha,'primal_fail':int(solver.primalFail),'raw_residual_ma
  'raw_residual_l2':float(np.linalg.norm(residual)),'primal_seconds':elapsed,'cells':cells,'primal_iterations':0 if args.probe else int(round(solver.solver.getLatestTime())),
  'temperature_min':float(state[4*cells:5*cells].min()),'temperature_max':float(state[4*cells:5*cells].max()),
  'functions':{name:float(solver.solver.calcFunction(name)) for name in ('cd','cl')},'loaded_libraries':loaded,
+ 'loaded_dafoam_libraries':{str(Path(line.split()[-1]).resolve()):hashlib.sha256(Path(line.split()[-1]).read_bytes()).hexdigest() for line in Path('/proc/self/maps').read_text().splitlines() if '/libDASolver' in line},
  'accepted':bool(solver.primalFail==0 and np.all(np.isfinite(residual)) and np.max(np.abs(residual))<1e-8),
  'gradient_verified':False,'initialization':'saved fields' if args.restart else 'uniform freestream',
  'adjoint_settings_configured_but_not_run':options['adjEqnOption']}
