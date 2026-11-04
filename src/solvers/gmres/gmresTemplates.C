@@ -486,7 +486,7 @@ label gmres<nScalar, nVector>::solve
             }
 
             // Matrix vector product
-            this->jacobian_.matrixMul(sV, vV, sTmp, vTmp);    // y_j = A v_j
+            this->matrixProduct(sV, vV, sTmp, vTmp);    // y_j = A v_j
 
             // Execute preconditioning
             this->precondition(sTmp, vTmp);			// w_j = P^-1 y_j
@@ -625,7 +625,7 @@ label gmres<nScalar, nVector>::solve
             }
 
             // Re-calculate the residual
-            this->jacobian_.matrixMul(dsW, dvW, sCheck, vCheck);
+            this->matrixProduct(dsW, dvW, sCheck, vCheck);
 
             forN(nScalar,j)
             {

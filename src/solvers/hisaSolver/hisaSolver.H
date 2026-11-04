@@ -42,6 +42,7 @@ Authors
 #ifndef hisaSolver_H
 #define hisaSolver_H
 
+#include <functional>
 #include "IOdictionary.H"
 #include "volFields.H"
 #include "autoPtr.H"
@@ -76,6 +77,10 @@ protected:
         const dictionary& dict_;
 
         const residualIO defaultTol_;
+
+        std::function<void(PtrList<volScalarField>&, PtrList<volVectorField>&,
+                           PtrList<volScalarField>&, PtrList<volVectorField>&)> matrixProduct_;
+
 
 private:
     // Private Member Functions
@@ -148,6 +153,22 @@ public:
 
 
     // Member Functions
+
+        void setMatrixProduct(const decltype(matrixProduct_)& product)
+        {
+            matrixProduct_ = product;
+        }
+
+        void matrixProduct
+        (
+            PtrList<volScalarField>& s, PtrList<volVectorField>& v,
+            PtrList<volScalarField>& sr, PtrList<volVectorField>& vr
+        ) const
+        {
+            if (matrixProduct_) matrixProduct_(s, v, sr, vr);
+            else jacobian_.matrixMul(s, v, sr, vr);
+        }
+
 
         //- Solve
         virtual label solve

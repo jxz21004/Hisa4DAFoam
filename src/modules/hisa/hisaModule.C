@@ -596,14 +596,7 @@ void hisaModule::outerIteration()
 
         // Call solver
         res_.clear();
-        sol->solve
-        (
-            scalarVars_,
-            vectorVars_,
-            scalarResiduals_,
-            vectorResiduals_,
-            res_
-        );
+        #include "matrixFreeSolve.H"
         solnControl_->setResidual(res_());
     }
 
