@@ -12,6 +12,7 @@ parser.add_argument('--case',type=Path,required=True)
 parser.add_argument('--library-dir',type=Path,required=True)
 parser.add_argument('--alpha',type=float,default=2.)
 parser.add_argument('--restart',action='store_true')
+parser.add_argument('--no-wall-functions',action='store_true')
 parser.add_argument('--adjoint',action='store_true')
 parser.add_argument('--allow-unconverged-adjoint',action='store_true',help='Diagnostic only; does not mark the primal or gradient accepted')
 parser.add_argument('--adjoint-restart',type=int,default=100)
@@ -35,7 +36,7 @@ velocity=[float(ap.V*np.cos(np.deg2rad(args.alpha))),0.,float(ap.V*np.sin(np.deg
 options={'solverName':'DAHisaFoam','designSurfaces':['wing'],
  'primalMinResTol':1e-8,'primalMinResTolDiff':1.,'printInterval':20,
  'normalizeStates':{'U':float(ap.V),'p':float(ap.P),'T':float(ap.T),'nuTilda':float(ap.nu),'phi':1.},
- 'primalBC':{'useWallFunction':True},
+ 'primalBC':{'useWallFunction':not args.no_wall_functions},
  'checkMeshThreshold':{'maxAspectRatio':100000.,'maxNonOrth':90.,'maxSkewness':4.,'maxIncorrectlyOrientedFaces':0},
  'inputInfo':{'patchV':{'type':'patchVelocity','patches':['inout'],'flowAxis':'x','normalAxis':'z','components':['solver','function']}},
  'function':{},
