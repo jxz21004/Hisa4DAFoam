@@ -10,3 +10,9 @@
 src/Make/linux64*
 src/lnInclude
 applications/singleRegionSolvers/hisa/Make/linux64*
+
+# Local generated validation artifacts
+__pycache__/
+*.py[cod]
+/reports/
+/runs/

@@ -1,41 +1,5 @@
-# GMRES 子空间内提前退出
+# gmresEarlyExit regression support
 
-原实现仅在完成全部 `nKrylov` 个方向后检查真实残差。因此，即使早已达到
-`solverTol` 或 `solverTolRel`，也会继续计算到子空间上限。
+run_regression.py checks early exit, restart-budget exhaustion and a single Krylov direction using the shared wingAero/run_case.py helper. Supply --template, --library-dir and --output outside this repository. This tests the linear solver stopping rule, not nonlinear CFD convergence.
 
-现在每个 Arnoldi 方向完成 Givens 旋转和回代后，用系数增量更新解，显式计算
-`b - A*x`，沿用原有逐方程/分量归一化及绝对、相对容差条件。达标立即退出；
-未达标继续扩展当前子空间。检查残差使用独立存储，不破坏 Arnoldi 工作向量。
-重启使用真实残差，且相对容差始终相对于本次线性求解的初始残差。
-Arnoldi breakdown 结束当前周期，但不绕过真实残差判据。
-
-`nKrylov` 是每周期方向数上限；`maxIter` 仍是周期数上限，返回值保持周期数。
-日志新增累计 `Krylov steps`，wingAero 统计脚本优先读取该值，兼容旧日志。
-
-代价：每个方向增加一次矩阵向量乘和残差全局归约，逐方向回代/更新也有开销。
-这保证原有真实残差标准得到直接检查，但不保证所有问题都更快。
-本修改处理线性过度求解，不代表非线性停滞已解决。
-
-## 回归测试
-
-在已配置 DAFoam 的环境中，用隔离构建的普通版及 ADR 版库运行：
-
-```sh
-python tests/gmresEarlyExit/run_regression.py \
-  --template /path/to/L3/base \
-  --library-dir /path/to/isolated/build/lib \
-  --output /path/to/new/test-output
-```
-
-只执行三个各一步的 L3 测试，不做长时间收敛或梯度验证：
-
-- 子空间 40，相对容差 0.1：要求真实残差达标且方向数小于 40。
-- 子空间 3、最多 2 周期，严格容差：要求达到预算，避免虚假提前退出。
-- 子空间 1、最多 3 周期，严格容差：验证最小子空间和重启。
-
-普通版与 ADR 版编译均需通过；实际推进测试使用普通版，加载校验同时核对两版库。
-本回归不覆盖多 MPI rank 或 ADR 模式下实际执行 GMRES。
-
-本次结果：40 方向上限在第 4 步退出，最大分量相对残差 0.0508821 < 0.1；
-严格容差下分别执行 2×3=6 步、3×1=3 步，均符合预算。详见 `results.json`。
-普通版及 ADR 编译/链接成功，库 SHA256 见 `build_results.json`。
+Project CFD validation belongs in `../../../validation/hisa_adflow_comparison`; large runtime cases belong under workspace `reports`.
