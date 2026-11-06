@@ -27,6 +27,7 @@ finiteVolume/fluxSchemes/fluxScheme/newFluxScheme.C
 finiteVolume/fluxSchemes/ausmPlusUp/ausmPlusUpFluxScheme.C
 finiteVolume/fluxSchemes/ausmPlusM/ausmPlusMFluxScheme.C
 finiteVolume/fluxSchemes/hllc/hllcFluxScheme.C
+finiteVolume/fluxSchemes/roe/roeFluxScheme.C
 finiteVolume/fluxSchemes/laxFriedrichs/laxFriedrichsFluxScheme.C
 finiteVolume/fluxSchemes/jst/jstFluxScheme.C
 finiteVolume/fvjMatrix/fvjOperators.C
@@ -34,6 +35,7 @@ finiteVolume/jacobians/jacobianMatrix/jacobianMatrices.C
 finiteVolume/jacobians/jacobianInviscid/jacobianInviscid/jacobianInviscid.C
 finiteVolume/jacobians/jacobianInviscid/jacobianInviscid/newJacobianInviscid.C
 finiteVolume/jacobians/jacobianInviscid/laxFriedrichs/laxFriedrichs.C
+finiteVolume/jacobians/jacobianInviscid/roe/roeJacobian.C
 finiteVolume/jacobians/jacobianInviscid/discreteLaxFriedrichs/discreteLaxFriedrichs.C
 finiteVolume/jacobians/jacobianInviscid/centralLaxFriedrichs/centralLaxFriedrichs.C
 finiteVolume/jacobians/jacobianViscous/jacobianViscous/jacobianViscous.C
