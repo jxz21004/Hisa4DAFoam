@@ -26,6 +26,7 @@ void roeJacobian::addInviscidJacobian(compressibleJacobianMatrix& a) {
     gamma_=thermo_.gamma();meshPhi_.clear();
     const auto& schemes=mesh_.thisDb().lookupObject<IOdictionary>("fvSchemes");
     scalar entropy=schemes.lookupOrDefault<scalar>("roeEntropyFix",0.1);
+    const bool cfl3d=schemes.lookupOrDefault<Switch>("roeCfl3dEntropyFix",false);
     auto& cR=a.dSByS(0,0);auto& cM=a.dSByV(0,0);auto& cE=a.dSByS(0,1);
     auto& mR=a.dVByS(0,0);auto& mM=a.dVByV(0,0);auto& mE=a.dVByS(0,1);
     auto& eR=a.dSByS(1,0);auto& eM=a.dSByV(1,0);auto& eE=a.dSByS(1,1);
@@ -38,7 +39,7 @@ void roeJacobian::addInviscidJacobian(compressibleJacobianMatrix& a) {
         scalar g=gamma_()[i];
         if(l.q[0]<=0 || r.q[0]<=0 || hisaRoe::pressure(l,g)<=0 || hisaRoe::pressure(r,g)<=0)
             FatalErrorInFunction<<"Nonpositive state in Roe Jacobian"<<exit(FatalError);
-        scalar L[5][5],R[5][5];hisaRoe::frozenBlocks(l,r,n,g,entropy,L,R);
+        scalar L[5][5],R[5][5];hisaRoe::frozenBlocks(l,r,n,g,entropy,L,R,cfl3d);
         for(int x=0;x<5;++x)for(int y=0;y<5;++y){L[x][y]*=area;R[x][y]*=area;}
         insertRoe(cR,f,i,j,L[0][0],R[0][0]);insertRoe(cE,f,i,j,L[0][4],R[0][4]);
         insertRoe(eR,f,i,j,L[4][0],R[4][0]);insertRoe(eE,f,i,j,L[4][4],R[4][4]);
@@ -61,7 +62,7 @@ void roeJacobian::addInviscidJacobian(compressibleJacobianMatrix& a) {
             scalar g=gamma_()[i];
             if(l.q[0]<=0 || r.q[0]<=0 || hisaRoe::pressure(l,g)<=0 || hisaRoe::pressure(r,g)<=0)
                 FatalErrorInFunction<<"Nonpositive processor state in Roe Jacobian"<<exit(FatalError);
-            scalar L[5][5],R[5][5];hisaRoe::frozenBlocks(l,r,n,g,entropy,L,R);
+            scalar L[5][5],R[5][5];hisaRoe::frozenBlocks(l,r,n,g,entropy,L,R,cfl3d);
             for(int x=0;x<5;++x)for(int y=0;y<5;++y){L[x][y]*=area;R[x][y]*=area;}
         insertRoeInterface(cR,patch,f,i,L[0][0],R[0][0]);insertRoeInterface(cE,patch,f,i,L[0][4],R[0][4]);
         insertRoeInterface(eR,patch,f,i,L[4][0],R[4][0]);insertRoeInterface(eE,patch,f,i,L[4][4],R[4][4]);

@@ -10,12 +10,12 @@ defineTypeNameAndDebug(roeFluxScheme,0);
 addToRunTimeSelectionTable(fluxScheme,roeFluxScheme,dictionary);
 roeFluxScheme::roeFluxScheme(const dictionary& dict,const fluidThermo& t,const volScalarField& rho,const volVectorField& U,const volVectorField&,const volScalarField& E)
 :fluxScheme(typeName,dict,U.mesh()),mesh_(U.mesh()),thermo_(t),rho_(rho),U_(U),rhoE_(E),
- kappa_(dict.lookupOrDefault<scalar>("roeKappa",1.0/3.0)),entropy_(dict.lookupOrDefault<scalar>("roeEntropyFix",0.1)),limit_(dict.lookupOrDefault<Switch>("roeLimit",true)) {
+ kappa_(dict.lookupOrDefault<scalar>("roeKappa",1.0/3.0)),entropy_(dict.lookupOrDefault<scalar>("roeEntropyFix",0.1)),limit_(dict.lookupOrDefault<Switch>("roeLimit",true)),cfl3dEntropy_(dict.lookupOrDefault<Switch>("roeCfl3dEntropyFix",false)) {
     if(kappa_<0 || kappa_>1 || entropy_<0 || entropy_>1)
         FatalErrorInFunction<<"Roe requires 0<=roeKappa<=1 and 0<=roeEntropyFix<=1"<<exit(FatalError);
     if(mesh_.moving())FatalErrorInFunction<<"Roe supports stationary meshes only"<<exit(FatalError);
     forAll(mesh_.boundary(),p)if(mesh_.boundary()[p].coupled() && mesh_.boundary()[p].type() != "processor")FatalErrorInFunction<<"Roe supports processor interfaces, but not cyclic/AMI interfaces"<<exit(FatalError);
-    Info<<"Roe UMUSCL: kappa="<<kappa_<<", entropy="<<entropy_<<", bounded="<<limit_<<endl;
+    Info<<"Roe UMUSCL: kappa="<<kappa_<<", entropy="<<entropy_<<", CFL3D entropy="<<cfl3dEntropy_<<", bounded="<<limit_<<endl;
 }
 // Bound against the full adjacent-cell stencil, identically for both kappa values.
 static void reconstructRoe(const volScalarField& q,const scalar k,const bool limit,scalarField& l,scalarField& r,List<scalarField>& bl,List<scalarField>& br) {
@@ -72,7 +72,7 @@ void roeFluxScheme::calcFlux(surfaceScalarField& phi,surfaceVectorField& phiUp,s
         scalar rl=l[0][f],rr=r[0][f],pl=l[4][f],pr=r[4][f];
         if(rl<=0 || rr<=0 || pl<=0 || pr<=0){++fallback;rl=rho_[i];rr=rho_[j];pl=p[i];pr=p[j];for(int c=0;c<3;++c){ul[c]=U_[i][c];ur[c]=U_[j][c];}}
         if(rl<=0 || rr<=0 || pl<=0 || pr<=0)FatalErrorInFunction<<"Nonpositive cell state in Roe face "<<f<<exit(FatalError);
-        auto fl=hisaRoe::flux(hisaRoe::conservative(rl,ul,pl,g),hisaRoe::conservative(rr,ur,pr,g),n,g,entropy_);
+        auto fl=hisaRoe::flux(hisaRoe::conservative(rl,ul,pl,g),hisaRoe::conservative(rr,ur,pr,g),n,g,entropy_,cfl3dEntropy_);
         const scalar area=mesh_.magSf()[f];phi[f]=area*fl.q[0];phiEp[f]=area*fl.q[4];
         for(int c=0;c<3;++c)phiUp[f][c]=area*fl.q[c+1];
     }
@@ -88,7 +88,7 @@ void roeFluxScheme::calcFlux(surfaceScalarField& phi,surfaceVectorField& phiUp,s
                 for(int c=0;c<3;++c){ul[c]=bl[c+1][patch][f];ur[c]=br[c+1][patch][f];n[c]=nv[c];}
                 if(rl<=0 || rr<=0 || pl<=0 || pr<=0){++fallback;rl=rho_[i];rr=rn[f];pl=p[i];pr=pn[f];for(int c=0;c<3;++c){ul[c]=U_[i][c];ur[c]=un[f][c];}}
                 if(rl<=0 || rr<=0 || pl<=0 || pr<=0)FatalErrorInFunction<<"Nonpositive Roe processor state"<<exit(FatalError);
-                auto fl=hisaRoe::flux(hisaRoe::conservative(rl,ul,pl,g),hisaRoe::conservative(rr,ur,pr,g),n,g,entropy_);
+                auto fl=hisaRoe::flux(hisaRoe::conservative(rl,ul,pl,g),hisaRoe::conservative(rr,ur,pr,g),n,g,entropy_,cfl3dEntropy_);
                 phi.boundaryFieldRef()[patch][f]=area*fl.q[0];phiEp.boundaryFieldRef()[patch][f]=area*fl.q[4];
                 for(int c=0;c<3;++c)phiUp.boundaryFieldRef()[patch][f][c]=area*fl.q[c+1];
             }
