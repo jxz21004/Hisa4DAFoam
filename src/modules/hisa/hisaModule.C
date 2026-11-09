@@ -26,6 +26,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "hisaModule.H"
+#include "incrementProtectionKernel.H"
+#include <cmath>
 #include "addToRunTimeSelectionTable.H"
 #include "bound.H"
 #include "preconditioner.H"
@@ -600,7 +602,9 @@ void hisaModule::outerIteration()
         solnControl_->setResidual(res_());
     }
 
-    if (localTimesteppingBounding_)
+    #include "incrementProtection.H"
+
+    if (localTimesteppingBounding_ && !incrementProtection)
     {
         volScalarField rhoMin
         (
