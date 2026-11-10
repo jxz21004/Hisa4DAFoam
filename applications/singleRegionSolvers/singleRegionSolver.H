@@ -181,7 +181,9 @@ int main(int argc, char *argv[])
             // NOTE: we removed the turbulence correct in hisaModule, so we need to call it here 
             // NOTE: this trick works for ESI version of OpenFOAM only!
             compressible::turbulenceModel& turbulence = mesh.thisDb().lookupObjectRef<compressible::turbulenceModel>("turbulenceProperties");
-            turbulence.correct();
+            if (!isA<pseudotimeControl>(solver.solnControl())
+                || !refCast<pseudotimeControl>(solver.solnControl()).fixedFlowConverged())
+                turbulence.correct();
 
             if (steadyState)
             {

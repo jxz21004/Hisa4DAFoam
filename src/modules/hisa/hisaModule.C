@@ -510,6 +510,16 @@ void hisaModule::outerIteration()
 
     // Update residuals
     #include "residualsUpdate.H"
+    if (solnControl.dict().lookupOrDefault<Switch>("fixedInitialResidual", false))
+    {
+        const scalar count=returnReduce(mesh.nCells(),sumOp<label>());
+        scalarField rms(5);
+        rms[0]=sqrt(gSum(sqr(rhoR.primitiveField()))/count);
+        for(direction c=0;c<3;++c) rms[c+1]=sqrt(gSum(sqr(rhoUR.primitiveField().component(c)))/count);
+        rms[4]=sqrt(gSum(sqr(rhoER.primitiveField()))/count);
+        if(solnControl.checkFixedFlowResidual(rms)) return;
+    }
+
 
     // Pseudo Courant number relaxation
     setPseudoCoNum();

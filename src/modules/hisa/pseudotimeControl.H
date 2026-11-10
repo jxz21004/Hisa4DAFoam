@@ -109,6 +109,8 @@ protected:
             // For persistent storage of initial residuals
             IOdictionary state_;
 
+    bool fixedFlowConverged_ = false;
+
     // Protected Member Functions
 
         //- Read controls from fvSolution dictionary
@@ -158,6 +160,9 @@ public:
     // Member Functions
 
         // Access
+
+            bool fixedFlowConverged() const { return fixedFlowConverged_; }
+            bool checkFixedFlowResidual(const scalarField& rms);
 
             //- Maximum number of pseudotime correctors
             inline label nCorrOuter() const;

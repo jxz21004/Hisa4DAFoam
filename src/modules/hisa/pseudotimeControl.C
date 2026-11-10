@@ -28,6 +28,7 @@ License
 
 #include "pseudotimeControl.H"
 #include "Switch.H"
+#include <cmath>
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -124,6 +125,46 @@ bool Foam::pseudotimeControl::criteriaSatisfied()
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
+bool Foam::pseudotimeControl::checkFixedFlowResidual(const scalarField& rms)
+{
+    if (!dict().lookupOrDefault<Switch>("fixedInitialResidual", false)) return false;
+    if (!steadyState_) FatalErrorInFunction << "fixedInitialResidual requires steady flow" << exit(FatalError);
+    scalarField initial;
+    const bool fresh = !state_.found("fixedFlowInitialRMS");
+    if (fresh)
+    {
+        if (mesh_.time().startTime().value() != 0 && !dict().lookupOrDefault<Switch>("allowNewResidualBaseline", false))
+            FatalErrorInFunction << "Restart has no fixedFlowInitialRMS; supply original baseline or explicitly allowNewResidualBaseline true" << exit(FatalError);
+        initial=rms;
+        state_.add("fixedFlowInitialRMS", initial);
+    }
+    else state_.lookup("fixedFlowInitialRMS") >> initial;
+    if (initial.size()!=5 || rms.size()!=5) FatalErrorInFunction << "Expected five flow residuals" << exit(FatalError);
+    scalarField absolute(5,0.0);
+    if (dict().found("fixedResidualAbsTol")) dict().lookup("fixedResidualAbsTol") >> absolute;
+    const scalar tol=dict().lookupOrDefault<scalar>("fixedResidualRelTol",1e-8);
+    if (absolute.size()!=5 || !std::isfinite(tol) || tol<=0 || tol>=1) FatalErrorInFunction << "Invalid fixed residual tolerances" << exit(FatalError);
+    scalarField relative(5,0.0);
+    bool pass=true;
+    forAll(rms,i)
+    {
+        if (!std::isfinite(rms[i]) || !std::isfinite(initial[i]) || rms[i]<0 || initial[i]<0 || !std::isfinite(absolute[i]) || absolute[i]<0)
+            FatalErrorInFunction << "Nonfinite or invalid steady residual/baseline/tolerance" << exit(FatalError);
+        relative[i]=initial[i]>0 ? rms[i]/initial[i] : (rms[i]==0 ? 0 : GREAT);
+        pass = pass && (rms[i]<=absolute[i] || (initial[i]>0 && relative[i]<=tol));
+    }
+    Info<< "FixedFlowResidualRMS: " << mesh_.time().value();
+    forAll(rms,i) Info<< " " << rms[i];
+    Info<< nl << "FixedFlowResidualRelative: " << mesh_.time().value();
+    forAll(relative,i) Info<< " " << relative[i];
+    Info<< nl << "FixedFlowResidualInitial:";
+    forAll(initial,i) Info<< " " << initial[i];
+    Info<< endl;
+    fixedFlowConverged_=!fresh && corr_>=nCorrOuterMin_ && pass;
+    if(fixedFlowConverged_) Info<< "Fixed flow residual criterion satisfied (SA not included)" << endl;
+    return fixedFlowConverged_;
+}
+
 Foam::pseudotimeControl::pseudotimeControl(fvMesh& mesh, const bool steadyState, const label nScalars, const label nVectors, const residualIO& defaultTol, const residualIO& defaultTolRel)
 :
 #if FOUNDATION >= 6
@@ -217,7 +258,18 @@ bool Foam::pseudotimeControl::loop()
         return false;
     }
 
+    if (steadyState_ && dict().lookupOrDefault<Switch>("fixedInitialResidual", false))
+    {
+        if (fixedFlowConverged_) return false;
+        // Preserve legacy initial-residual bookkeeping used by CFL adaptation,
+        // but never use its dynamic normalization as the stopping criterion.
+        (void)criteriaSatisfied();
+        Info<< algorithmName_ << ": iteration " << corr_ << endl;
+        return true;
+    }
     bool completed = false;
+    if (converged_) converged_ = (max(residuals_-residualTols_) < 0.0)
+        || (max(residuals_/(initResiduals_+ROOTVSMALL)-residualTolsRel_) < 0.0);
     if (converged_ || criteriaSatisfied())
     {
         if (converged_)

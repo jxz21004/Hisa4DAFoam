@@ -29,3 +29,7 @@ LIB_LIBS = \
     -ldecompositionMethods$(WM_AD_MODE) \
     -L$(FOAM_LIBBIN)/dummy -lptscotchDecomp$(WM_AD_MODE)
 
+
+// Global wall-surface search for exactWallDistance
+EXE_INC += -I$(LIB_SRC)/surfMesh/lnInclude
+LIB_LIBS += -lsurfMesh$(WM_AD_MODE)
