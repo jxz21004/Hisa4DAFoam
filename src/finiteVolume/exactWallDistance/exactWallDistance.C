@@ -6,6 +6,8 @@
 #include "triSurface.H"
 #include "triSurfaceSearch.H"
 #include "Pstream.H"
+#include "UOPstream.H"
+#include "UIPstream.H"
 #include "addToRunTimeSelectionTable.H"
 #include <vector>
 #include <cmath>
@@ -13,6 +15,12 @@
 namespace Foam { namespace patchDistMethods {
 class exactWallDistance : public patchDistMethod
 {
+    const bool fixedAssociation_;
+    const bool sparseExchange_;
+    bool sparseReady_=false;
+    List<labelList> sendSlots_, receiveSlots_;
+    label localWallSize_=0;
+    label compactPointCount_=0;
     List<labelList> associations_;
     std::vector<double> wallSnapshot_;
     List<std::vector<double>> querySnapshots_;
@@ -69,15 +77,54 @@ class exactWallDistance : public patchDistMethod
         }
         if (!count || count%3)
             FatalErrorInFunction << "Empty or invalid global wall triangulation" << exit(FatalError);
-        scalarField packed(3*count,Zero);
-        forAll(local,i) for(direction j=0;j<3;++j) packed[3*(start+i)+j]=local[i][j];
-        if (Pstream::parRun()) UPstream::mpiAllReduce
-        (
-            packed.data(),packed.size(),UPstream::opCodes::op_sum,UPstream::worldComm
-        );
-        pointField points(count);
-        forAll(points,i) for(direction j=0;j<3;++j) points[i][j]=packed[3*i+j];
-        List<labelledTri> triangles(count/3);
+        pointField points;
+        if (sparseReady_)
+        {
+            if (local.size()!=localWallSize_) FatalErrorInFunction
+                << "Wall topology changed without cache invalidation" << exit(FatalError);
+            points.setSize(compactPointCount_);
+            // Deterministic source/destination ordering avoids blocking cycles.
+            // Typed scalar transfers preserve remote derivatives on ADR tapes.
+            const label me=Pstream::myProcNo();
+            for (label source=0;source<Pstream::nProcs();++source)
+                for (label dest=0;dest<Pstream::nProcs();++dest)
+                {
+                    if (me==source)
+                    {
+                        const labelList& slots=sendSlots_[dest];
+                        if (!slots.size()) continue;
+                        if (source==dest)
+                        {
+                            forAll(slots,i) points[receiveSlots_[source][i]]=local[slots[i]];
+                        }
+                        else
+                        {
+                            scalarField buf(3*slots.size());
+                            forAll(slots,i) for(direction j=0;j<3;++j) buf[3*i+j]=local[slots[i]][j];
+                            UOPstream::write(UPstream::commsTypes::scheduled,dest,buf.cdata(),buf.size());
+                        }
+                    }
+                    else if (me==dest && receiveSlots_[source].size())
+                    {
+                        const labelList& slots=receiveSlots_[source];
+                        scalarField buf(3*slots.size());
+                        UIPstream::read(UPstream::commsTypes::scheduled,source,buf.data(),buf.size());
+                        forAll(slots,i) for(direction j=0;j<3;++j) points[slots[i]][j]=buf[3*i+j];
+                    }
+                }
+        }
+        else
+        {
+            scalarField packed(3*count,Zero);
+            forAll(local,i) for(direction j=0;j<3;++j) packed[3*(start+i)+j]=local[i][j];
+            if (Pstream::parRun()) UPstream::mpiAllReduce
+            (
+                packed.data(),packed.size(),UPstream::opCodes::op_sum,UPstream::worldComm
+            );
+            points.setSize(count);
+            forAll(points,i) for(direction j=0;j<3;++j) points[i][j]=packed[3*i+j];
+        }
+        List<labelledTri> triangles(points.size()/3);
         forAll(triangles,i) triangles[i]=labelledTri(3*i,3*i+1,3*i+2,0);
         const auto currentWall=snapshot(points);
         const bool sameWall=currentWall==wallSnapshot_;
@@ -94,8 +141,8 @@ class exactWallDistance : public patchDistMethod
         {
             labelList& ids=associations_[seti];
             const auto currentQuery=snapshot(centres);
-            const bool reuse=sameWall && ids.size()==centres.size()
-                && querySnapshots_[seti]==currentQuery;
+            const bool reuse=ids.size()==centres.size()
+                && (fixedAssociation_ || (sameWall && querySnapshots_[seti]==currentQuery));
             if (!reuse)
             {
                 if (!search.valid())
@@ -162,21 +209,64 @@ class exactWallDistance : public patchDistMethod
         // Keep OpenFOAM patch coupling/BC semantics.
         y.correctBoundaryConditions();
         if (normals) normals->correctBoundaryConditions();
-        Info<< "exactWallDistance: " << triangles.size()
+        Info<< "exactWallDistance: " << count/3
             << " global triangles; cell distance min/max "
             << gMin(y.primitiveField()) << ' ' << gMax(y.primitiveField()) << endl;
         wallSnapshot_=currentWall;
         Info<< "exactWallDistance associations: reused=" << returnReduce(reused,sumOp<label>())
             << " searched=" << returnReduce(searched,sumOp<label>()) << endl;
+        if (fixedAssociation_ && sparseExchange_ && !sparseReady_)
+        {
+            labelHashSet needed;
+            for (const labelList& ids : associations_) for (const label id : ids) needed.insert(id);
+            const labelList unique=needed.sortedToc();
+            Map<label> remap;
+            labelList requested(3*unique.size());
+            forAll(unique,i)
+            {
+                remap.insert(unique[i],i);
+                for(label j=0;j<3;++j) requested[3*i+j]=3*unique[i]+j;
+            }
+            for (labelList& ids : associations_) for (label& id : ids) id=remap[id];
+            List<labelList> requests(Pstream::nProcs());
+            requests[Pstream::myProcNo()]=requested;
+            Pstream::gatherList(requests); Pstream::broadcastList(requests);
+            sendSlots_.setSize(Pstream::nProcs()); receiveSlots_.setSize(Pstream::nProcs());
+            forAll(requests,dest)
+            {
+                DynamicList<label> slots;
+                for (label id : requests[dest]) if(id>=start && id<start+local.size()) slots.append(id-start);
+                sendSlots_[dest]=slots;
+            }
+            label offset=0;
+            forAll(counts,source)
+            {
+                DynamicList<label> slots;
+                forAll(requested,i) if(requested[i]>=offset && requested[i]<offset+counts[source]) slots.append(i);
+                receiveSlots_[source]=slots;
+                offset+=counts[source];
+            }
+            compactPointCount_=requested.size(); localWallSize_=local.size(); sparseReady_=true;
+            wallSnapshot_.clear();
+            for (auto& snap : querySnapshots_) snap.clear();
+        }
+        if (sparseReady_) Info<< "exactWallDistance sparse coordinates: local="
+            << compactPointCount_ << " global=" << count << endl;
         return false;
     }
 public:
     TypeName("exactWallDistance");
-    exactWallDistance(const dictionary&,const fvMesh& mesh,const labelHashSet& ids)
-    : patchDistMethod(mesh,ids) {}
+    exactWallDistance(const dictionary& dict,const fvMesh& mesh,const labelHashSet& ids)
+    : patchDistMethod(mesh,ids),
+      fixedAssociation_(dict.lookupOrDefault<bool>("fixedAssociation", false)),
+      sparseExchange_(dict.lookupOrDefault<bool>("sparseExchange", true))
+    {
+        Info<< "exactWallDistance fixedAssociation=" << fixedAssociation_ << endl;
+    }
     void updateMesh(const mapPolyMesh&) override
     {
         associations_.clear(); querySnapshots_.clear(); wallSnapshot_.clear();
+        sparseReady_=false; sendSlots_.clear(); receiveSlots_.clear();
     }
     bool correct(volScalarField& y) override { return calculate(y,nullptr); }
     bool correct(volScalarField& y,volVectorField& n) override { return calculate(y,&n); }

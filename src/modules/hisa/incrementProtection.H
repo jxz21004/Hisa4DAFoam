@@ -29,8 +29,8 @@ if (incrementProtection)
         // Linear pressure change; final nonlinear pressure is checked below.
         const vector u0=m0[i]/r0[i];
         const scalar dpRel=(dE-(u0&dm)+0.5*magSqr(u0)*dr)/internal0;
-        const scalar ar=hisaIncrementProtection::coefficient(dr/r0[i]);
-        const scalar ap=hisaIncrementProtection::coefficient(dpRel);
+        const scalar ar=hisaIncrementProtection::coefficient<scalar>(dr/r0[i]);
+        const scalar ap=hisaIncrementProtection::coefficient<scalar>(dpRel);
         scalar alpha=min(ar,ap);
         if (ar<1 || ap<1) ++limited;
         bool accepted=false;

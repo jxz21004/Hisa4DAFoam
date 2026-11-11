@@ -68,4 +68,6 @@ finiteVolume/snGradSchemes/hisaLimitedSnGrad/hisaLimitedSnGrads.C
 
 finiteVolume/exactWallDistance/exactWallDistance.C
 
+thermophysical/sutherlandConstPr/sutherlandConstPrThermos.C
+
 LIB = $(DAFOAM_ROOT_PATH)/OpenFOAM/sharedLibs/libHisaSolver$(WM_AD_MODE)
