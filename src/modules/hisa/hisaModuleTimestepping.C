@@ -38,6 +38,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "hisaModule.H"
+#include "uniformDimensionedFields.H"
 #include "fvcSmooth.H"
 #include "fvcMeshPhi.H"
 
@@ -167,6 +168,28 @@ void hisaModule::setPseudoDeltaT()
 
 void hisaModule::setPseudoCoNum()
 {
+    // DAFoam hybrid supplies the same fixed-scaled full residual used by NK.
+    // Native HISA keeps its original controller when hybrid mode is absent.
+    if (mesh_.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled",false))
+    {
+        const scalar relative=mesh_.lookupObject<uniformDimensionedScalarField>("hybridRelativeResidual").value();
+        const scalar initial=mesh_.lookupObject<uniformDimensionedScalarField>("hybridInitialCFL").value();
+        const dictionary& controls=solnControl_().dict();
+        const scalar safety=controls.lookupOrDefault<scalar>("pseudoCoSafetyFactor",1);
+        const scalar exponent=controls.lookupOrDefault<scalar>("pseudoCoResidualExponent",1);
+        if (!std::isfinite(safety) || safety<=0 || !std::isfinite(exponent) || exponent<0)
+            FatalErrorInFunction<<"pseudoCoSafetyFactor must be finite and positive; "
+                <<"pseudoCoResidualExponent must be finite and nonnegative"<<exit(FatalError);
+        const scalar relativeBounded=max(relative,SMALL);
+        // Default exponent avoids pow and preserves the original SER expression.
+        const scalar denominator=exponent==1 ? relativeBounded
+            : max(pow(relativeBounded,exponent),VSMALL);
+        scalar ratio=safety*initial/denominator/pseudoCoNum_().value();
+        ratio=max(min(ratio,pseudoCoNumMaxIncr_),pseudoCoNumMinDecr_);
+        pseudoCoNum_() *= ratio;
+        pseudoCoNum_().value()=max(min(pseudoCoNum_().value(),pseudoCoNumMax_),pseudoCoNumMin_);
+        return;
+    }
     // The optional limited-update path owns CFL feedback after trial acceptance.
 #if FOUNDATION >= 10
     const dictionary& flow = mesh_.solution().subDict("flowSolver");

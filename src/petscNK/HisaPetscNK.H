@@ -13,8 +13,8 @@ using Array=std::vector<double>;
 inline void check(PetscErrorCode e) { if(e) throw std::runtime_error("PETSc NK error "+std::to_string(e)); }
 inline double dot(const Array&a,const Array&b) { double v=0,g=0; for(size_t i=0;i<a.size();++i)v+=a[i]*b[i]; MPI_Allreduce(&v,&g,1,MPI_DOUBLE,MPI_SUM,PETSC_COMM_WORLD); return g; }
 inline double norm(const Array&a) {return std::sqrt(dot(a,a));}
-struct Options {int subspace=60,maxLinear=60,overlap=1,fill=2,lag=20; double rtol=.3; bool ew=true;};
-struct Result {bool accepted=false; double alpha=0,linear=1; int iterations=0,reason=0;};
+struct Options {int subspace=60,maxLinear=60,overlap=1,fill=2,lag=20; double rtol=.3,stagnationTol=.99; bool ew=true;};
+struct Result {bool accepted=false; double alpha=0,linear=1; int iterations=0,reason=0,retries=0; bool stagnated=false; double firstLinear=0;};
 class Solver {
     Options opt_; Array weights_,base_,res_; Mat A_=nullptr,P_=nullptr; KSP ksp_=nullptr;
     std::function<Array(const Array&)> residual_;
@@ -38,13 +38,14 @@ class Solver {
 public:
     Solver(const Options&o,const Array&w,std::function<Array(const Array&)>r,std::function<bool(const Array&)>a,std::function<Mat()>p)
     :opt_(o),weights_(w),residual_(r),admissible_(a),matrix_(p) {
-        if(o.subspace<1||o.maxLinear<1||o.lag<1||o.overlap<0||o.fill<0||o.rtol<=0||o.rtol>=1)throw std::runtime_error("Invalid NK options");
+        if(o.subspace<1||o.maxLinear<1||o.lag<1||o.overlap<0||o.fill<0||o.rtol<=0||o.rtol>=1||o.stagnationTol<=0||o.stagnationTol>1)throw std::runtime_error("Invalid NK options");
         check(MatCreateShell(PETSC_COMM_WORLD,w.size(),w.size(),PETSC_DETERMINE,PETSC_DETERMINE,this,&A_));
         check(MatShellSetOperation(A_,MATOP_MULT,(void(*)(void))multiply));
     }
     ~Solver(){resetPC();if(A_)MatDestroy(&A_);}
     void restart(){resetPC();count_=0;previousNorm_=0;}
-    Result step(Array& z) {
+    Result step(Array& z, bool retry=false) {
+        const double savedNorm=previousNorm_,savedEta=previousEta_;
         Result result; base_=z;res_=evaluate(z);double rn=norm(res_);
         if(!std::isfinite(rn)||rn==0)return result;
         if(!ksp_||count_%opt_.lag==0){resetPC();P_=matrix_();Vec w=nullptr;check(VecCreateMPIWithArray(PETSC_COMM_WORLD,1,weights_.size(),PETSC_DECIDE,weights_.data(),&w));check(MatDiagonalScale(P_,w,nullptr));check(VecDestroy(&w));
@@ -60,6 +61,20 @@ public:
         check(MatMult(A_,dx,jd));const PetscScalar *p;Array d(z.size()),j(z.size());check(VecGetArrayRead(dx,&p));for(size_t i=0;i<z.size();++i)d[i]=PetscRealPart(p[i]);check(VecRestoreArrayRead(dx,&p));check(VecGetArrayRead(jd,&p));for(size_t i=0;i<z.size();++i)j[i]=PetscRealPart(p[i]);check(VecRestoreArrayRead(jd,&p));
         Array defect=j;for(size_t i=0;i<z.size();++i)defect[i]+=res_[i];result.linear=norm(defect)/rn;
         VecDestroy(&jd);VecDestroy(&dx);VecDestroy(&rhs);++count_;
+        // Rebuild once at the same base state before accepting a useless direction.
+        if(!std::isfinite(result.linear)||result.linear>=opt_.stagnationTol) {
+            residual_(base_);
+            if(!retry) {
+                resetPC(); --count_;
+                previousNorm_=savedNorm;previousEta_=savedEta;
+                Result second=step(z,true);
+                second.retries=1;second.firstLinear=result.linear;
+                second.iterations+=result.iterations;
+                return second;
+            }
+            result.stagnated=true;
+            return result;
+        }
         // An iteration limit may still yield a useful direction; breakdown may not.
         if(reason<0&&reason!=KSP_DIVERGED_ITS){residual_(base_);return result;}
         double f0=.5*rn*rn,slope=-std::abs(dot(res_,j)),alpha=1,prevA=0,prevF=0;if(slope==0)slope=-1;

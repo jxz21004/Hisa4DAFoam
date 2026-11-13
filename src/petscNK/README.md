@@ -63,8 +63,16 @@ if the final convergence tolerance is already met. `ptcRecoverySteps` applies
 separately after every NK fallback. `nkMaxLinearIterations` still limits each
 inner GMRES solve. Old maxOuterIterations/nkMaxIterations keys are no longer used.
 
-PTC uses native HISA flow iteration and DAFoam SA correction. Its CFL continues
-to follow the existing PTC configuration. NK does not use that CFL as a step
+PTC uses native HISA flow iteration and DAFoam SA correction. In hybrid mode,
+its SER target is now initialCFL / totalRelativeResidual, using exactly the fixed
+scaled full residual and baseline used for NK switching and stopping. Existing
+pseudoCoNumMin/Max and per-step increase/decrease factors still apply; local
+CFL damping/increment protection remain unchanged. No extra CFL reduction is
+applied solely because NK failed. Initial CFL is checkpointed with the baseline;
+legacy checkpoints use configured pseudoCoNum on their first migration. The
+current pseudoCoNum/pseudoCoField continue to use native checkpoint storage.
+Use resetPseudo=false and limitedUpdate=false: competing CFL controllers are
+rejected explicitly. Native non-hybrid HISA retains its original SER rule. NK does not use that CFL as a step
 size: it uses line-search alpha. If the total relative residual exceeds `nkSwitchTol`, or NK
 rejects its step, the next update uses PTC. Recovery steps prevent immediate
 chatter. The same `nkSwitchTol` controls entry (ratio <= threshold) and return
@@ -94,3 +102,35 @@ PTC counts are derived from cumulative outer minus NK attempts.
 
 Monitor `cfl` (enabled by default) prints the PTC global pseudoCoNum and local
 pseudoCoField min/max at the reported state. NK prints CFL n/a and uses alpha.
+
+Linear stagnation guard: `nkLinearStagnationTol` defaults to0.99 (valid range
+0 < value <= 1). If the independently recomputed linear defect ratio reaches
+this value or is nonfinite, restore the physical base state, rebuild the PC,
+and retry the same linear problem once with the same EW tolerance. If still
+stagnant, return a rejected update to the adapter, which falls back to PTC.
+No line search is run on that stagnant direction. Retry counts as one outer
+attempt; `KSP`/`totalKSP` includes both linear solves (up to twice the configured
+linear limit). An immediate event records first/retry linRel; normal successful
+steps retain the existing PC lag. No extra CFL reduction is introduced.
+
+
+Hybrid PTC SER tuning in `pseudoTime` (independent of initial CFL):
+
+```
+pseudoCoSafetyFactor      1;
+pseudoCoResidualExponent  1;
+```
+
+Target = safetyFactor * savedInitialCFL / totalRelative^exponent. Both default
+1 preserve the previous rule; safety must be finite >0, exponent finite >=0.
+Exponent0 gives a constant target. Existing per-step limits and CFL bounds
+still apply, including at startup. The initial CFL field is still initialized
+from pseudoCoNum; a low target can then reduce it subject to the lower bound.
+A safety factor0.1 turns an otherwise50 target into5 when exponent1. Exponent
+changes how strongly accumulated residual reduction grows the target. These
+settings affect hybrid PTC only, not NK line search or non-hybrid native SER.
+They are user controls read from the dictionary, not saved baseline quantities.
+Changing them on restart intentionally changes subsequent targets. Default
+exponent1 avoids pow; otherwise one scalar power per PTC iteration per rank
+is used (not one per cell/face). No wall-time speedup/slowdown claim is made;
+changes to the nonlinear iteration count may dominate their arithmetic cost.
