@@ -127,6 +127,8 @@ bool Foam::pseudotimeControl::criteriaSatisfied()
 
 bool Foam::pseudotimeControl::checkFixedFlowResidual(const scalarField& rms)
 {
+    // The hybrid adapter owns the full flow + SA baseline and stopping test.
+    if (mesh_.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled", false)) return false;
     if (!dict().lookupOrDefault<Switch>("fixedInitialResidual", false)) return false;
     if (!steadyState_) FatalErrorInFunction << "fixedInitialResidual requires steady flow" << exit(FatalError);
     scalarField initial;
@@ -256,6 +258,12 @@ bool Foam::pseudotimeControl::loop()
             #endif
         }
         return false;
+    }
+
+    if (steadyState_ && mesh_.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled", false))
+    {
+        (void)criteriaSatisfied();
+        return true;
     }
 
     if (steadyState_ && dict().lookupOrDefault<Switch>("fixedInitialResidual", false))
