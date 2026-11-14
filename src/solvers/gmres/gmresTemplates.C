@@ -27,6 +27,7 @@ License
 
 
 #include "gmres.H"
+#include "IOdictionary.H"
 #include "zeroGradientFvPatchFields.H"
 #if FOUNDATION >= 12
 #include "scalarMatrices.H"
@@ -444,6 +445,29 @@ label gmres<nScalar, nVector>::solve
 
         if (solverStop)
         {
+            // Publish existing solve statistics without extra residual evaluations.
+            const word performanceName("hisaPTCGMRESPerformance");
+            if (!this->mesh_.template foundObject<IOdictionary>(performanceName))
+            {
+                IOdictionary* performance = new IOdictionary(IOobject
+                (
+                    performanceName, this->mesh_.time().timeName(), this->mesh_,
+                    IOobject::NO_READ, IOobject::NO_WRITE
+                ));
+                performance->store();
+            }
+            IOdictionary& performance = const_cast<IOdictionary&>
+                (this->mesh_.template lookupObject<IOdictionary>(performanceName));
+            performance.set("timeIndex", this->mesh_.time().timeIndex());
+            performance.set("steps", krylovSteps);
+            performance.set("cycles", solverIter);
+            performance.set("relativeMax", max(finalRes/(initRes+ROOTVSMALL)));
+            performance.set("reason", word
+            (
+                max(finalRes/tol) < 1.0 ? "absolute" :
+                max(finalRes/(initRes+ROOTVSMALL)/(tolRel+ROOTVSMALL)) < 1.0
+                    ? "relative" : "maxIter"
+            ));
             break;
         }
 

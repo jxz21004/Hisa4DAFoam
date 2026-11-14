@@ -2,6 +2,7 @@
 #define HisaPetscNK_H
 // Passive primal NK core. The adapter owns the physical residual and state.
 #include <petscksp.h>
+#include "HisaCubicLineSearch.H"
 #include <vector>
 #include <functional>
 #include <cmath>
@@ -13,8 +14,8 @@ using Array=std::vector<double>;
 inline void check(PetscErrorCode e) { if(e) throw std::runtime_error("PETSc NK error "+std::to_string(e)); }
 inline double dot(const Array&a,const Array&b) { double v=0,g=0; for(size_t i=0;i<a.size();++i)v+=a[i]*b[i]; MPI_Allreduce(&v,&g,1,MPI_DOUBLE,MPI_SUM,PETSC_COMM_WORLD); return g; }
 inline double norm(const Array&a) {return std::sqrt(dot(a,a));}
-struct Options {int subspace=60,maxLinear=60,overlap=1,fill=2,lag=20; double rtol=.3,stagnationTol=.99; bool ew=true;};
-struct Result {bool accepted=false; double alpha=0,linear=1; int iterations=0,reason=0,retries=0; bool stagnated=false; double firstLinear=0;};
+struct Options {int subspace=60,maxLinear=60,overlap=1,fill=2,lag=20; double rtol=.3,stagnationTol=.99; bool ew=true,relaxedCubic=true; double minStep=.01; int turbulenceStart=-1;};
+struct Result {bool accepted=false; double alpha=0,linear=1; int iterations=0,reason=0,retries=0; bool stagnated=false; double firstLinear=0; bool minimumStep=false,prelimited=false;};
 class Solver {
     Options opt_; Array weights_,base_,res_; Mat A_=nullptr,P_=nullptr; KSP ksp_=nullptr;
     std::function<Array(const Array&)> residual_;
@@ -38,7 +39,7 @@ class Solver {
 public:
     Solver(const Options&o,const Array&w,std::function<Array(const Array&)>r,std::function<bool(const Array&)>a,std::function<Mat()>p)
     :opt_(o),weights_(w),residual_(r),admissible_(a),matrix_(p) {
-        if(o.subspace<1||o.maxLinear<1||o.lag<1||o.overlap<0||o.fill<0||o.rtol<=0||o.rtol>=1||o.stagnationTol<=0||o.stagnationTol>1)throw std::runtime_error("Invalid NK options");
+        if(o.subspace<1||o.maxLinear<1||o.lag<1||o.overlap<0||o.fill<0||o.rtol<=0||o.rtol>=1||o.stagnationTol<=0||o.stagnationTol>1||!std::isfinite(o.minStep)||o.minStep<=0||o.minStep>=1)throw std::runtime_error("Invalid NK options");
         check(MatCreateShell(PETSC_COMM_WORLD,w.size(),w.size(),PETSC_DETERMINE,PETSC_DETERMINE,this,&A_));
         check(MatShellSetOperation(A_,MATOP_MULT,(void(*)(void))multiply));
     }
@@ -77,17 +78,25 @@ public:
         }
         // An iteration limit may still yield a useful direction; breakdown may not.
         if(reason<0&&reason!=KSP_DIVERGED_ITS){residual_(base_);return result;}
-        double f0=.5*rn*rn,slope=-std::abs(dot(res_,j)),alpha=1,prevA=0,prevF=0;if(slope==0)slope=-1;
-        for(int trialNo=0;trialNo<30;++trialNo){Array trial=base_;for(size_t i=0;i<z.size();++i)trial[i]+=alpha*d[i];
-            if(!admissible_(trial)){alpha*=.5;prevA=0;continue;}
-            Array r=evaluate(trial);double f=.5*dot(r,r);if(!std::isfinite(f)){alpha*=.5;prevA=0;continue;}
-            // Do not accept a worsening minimum step in the production adapter.
-            if(f<=f0+.01*alpha*slope){z=trial;result.accepted=true;result.alpha=alpha;return result;}
-            double candidate=alpha/2;
-            if(prevA==0){double den=2*(f-f0-alpha*slope);if(den!=0)candidate=-slope*alpha*alpha/den;}
-            else {double t1=f-f0-alpha*slope,t2=prevF-f0-prevA*slope;double a=(t1/(alpha*alpha)-t2/(prevA*prevA))/(alpha-prevA);double bb=(-prevA*t1/(alpha*alpha)+alpha*t2/(prevA*prevA))/(alpha-prevA);candidate=a!=0?(-bb+std::sqrt(std::max(bb*bb-3*a*slope,0.)))/(3*a):(bb!=0?-slope/(2*bb):alpha/2);}
-            prevA=alpha;prevF=f;if(!std::isfinite(candidate))candidate=alpha/2;alpha=std::min(.5*alpha,std::max(.1*alpha,candidate));if(alpha<1e-8)break;
-        }
+        double slope=-std::abs(dot(res_,j));if(slope==0)slope=-1;
+        auto turbNorm=[&](const Array& r) {
+            double local=0,total=0;
+            if(opt_.turbulenceStart<0)return 0.0;
+            for(size_t i=size_t(opt_.turbulenceStart);i<r.size();++i)local+=r[i]*r[i];
+            check(MPI_Allreduce(&local,&total,1,MPI_DOUBLE,MPI_SUM,PETSC_COMM_WORLD));
+            return std::sqrt(total);
+        };
+        const double turb0=turbNorm(res_);
+        Array trial;
+        auto merit=[&](double alpha) {
+            trial=base_;for(size_t i=0;i<z.size();++i)trial[i]+=alpha*d[i];
+            TrialMerit m;if(!admissible_(trial))return m;
+            Array r=evaluate(trial);m.value=.5*dot(r,r);m.turbulence=turbNorm(r);
+            m.valid=std::isfinite(m.value)&&std::isfinite(m.turbulence);return m;
+        };
+        const SearchResult search=cubicSearch(.5*rn*rn,slope,turb0,opt_.minStep,opt_.relaxedCubic,merit);
+        result.minimumStep=search.minimumStep;result.prelimited=search.prelimited;
+        if(search.accepted){z=trial;result.accepted=true;result.alpha=search.alpha;return result;}
         residual_(base_);return result;
     }
 };

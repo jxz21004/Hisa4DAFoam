@@ -14,5 +14,5 @@ int main(){
  auto off=flux(l,r,n,g,0.,true),old=flux(l,r,n,g,0.);for(int i=0;i<5;i++)check(off.q[i],old.q[i]);
  double h=1e-6,delta=2*eps;check(entropyAbs(delta,delta),delta);
  assert(std::abs((entropyAbs(delta+h,delta)-entropyAbs(delta-h,delta))/(2*h)-1)<1e-5);
- std::cout<<"CFL3D entropy contact, conservation, consistency, zero-switch, C1 checks passed\n";
+ std::cout<<"All-wave entropy contact, conservation, consistency, zero-switch, C1 checks passed\n";
 }

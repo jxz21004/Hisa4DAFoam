@@ -304,6 +304,32 @@ void hisaModule::initialise()
         )
     );
 
+    // Read controller history at the selected restart time, before the first
+    // outer iteration advances Time. Lazy reading could pick up a later file.
+    if (mesh.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled",false)
+        && solnControl_().dict().lookupOrDefault<scalar>("pseudoCoStagnationGain",0)>0
+        && !mesh.foundObject<IOdictionary>("hisaCFLStagnationState"))
+    {
+        IOdictionary* history=new IOdictionary(IOobject
+        (
+            "hisaCFLStagnationState", runTime.timeName(), "uniform", mesh,
+            IOobject::READ_IF_PRESENT, IOobject::AUTO_WRITE
+        ));
+        history->store();
+    }
+
+    if (mesh.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled",false)
+        && solnControl_().dict().lookupOrDefault<bool>("pseudoCoGainScheduling",false)
+        && !mesh.foundObject<IOdictionary>("hisaCFLTrendState"))
+    {
+        IOdictionary* history=new IOdictionary(IOobject
+        (
+            "hisaCFLTrendState", runTime.timeName(), "uniform", mesh,
+            IOobject::READ_IF_PRESENT, IOobject::AUTO_WRITE
+        ));
+        history->store();
+    }
+
     if (localTimestepping_)
     {
         pseudoCoField_.reset

@@ -38,6 +38,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "hisaModule.H"
+#include "IOdictionary.H"
 #include "uniformDimensionedFields.H"
 #include "fvcSmooth.H"
 #include "fvcMeshPhi.H"
@@ -180,11 +181,78 @@ void hisaModule::setPseudoCoNum()
         if (!std::isfinite(safety) || safety<=0 || !std::isfinite(exponent) || exponent<0)
             FatalErrorInFunction<<"pseudoCoSafetyFactor must be finite and positive; "
                 <<"pseudoCoResidualExponent must be finite and nonnegative"<<exit(FatalError);
+        const scalar damping=controls.lookupOrDefault<scalar>("pseudoCoLogDamping",1);
+        if (!std::isfinite(damping) || damping<=0 || damping>1)
+            FatalErrorInFunction<<"pseudoCoLogDamping must be finite in (0,1]"<<exit(FatalError);
         const scalar relativeBounded=max(relative,SMALL);
         // Default exponent avoids pow and preserves the original SER expression.
         const scalar denominator=exponent==1 ? relativeBounded
             : max(pow(relativeBounded,exponent),VSMALL);
         scalar ratio=safety*initial/denominator/pseudoCoNum_().value();
+        const scalar integralGain=controls.lookupOrDefault<scalar>("pseudoCoStagnationGain",0);
+        const scalar minDecay=controls.lookupOrDefault<scalar>("pseudoCoStagnationDecay",0.002);
+        if (!std::isfinite(integralGain) || integralGain<0 ||
+            !std::isfinite(minDecay) || minDecay<=0)
+            FatalErrorInFunction<<"pseudoCoStagnationGain must be finite and nonnegative; "
+                <<"pseudoCoStagnationDecay must be finite and positive"<<exit(FatalError);
+        if (integralGain>0)
+        {
+            // Registry ownership avoids a static controller shared between cases.
+            // AUTO_WRITE persists history alongside the current pseudoCoNum.
+            const word stateName("hisaCFLStagnationState");
+            IOdictionary& history=const_cast<IOdictionary&>
+                (mesh_.lookupObject<IOdictionary>(stateName));
+            scalar integral=history.lookupOrDefault<scalar>("integral",0);
+            const scalar previous=history.lookupOrDefault<scalar>("previousRelative",relativeBounded);
+            if (!std::isfinite(integral) || integral<0 || !std::isfinite(previous) || previous<=0)
+                FatalErrorInFunction<<"Invalid saved CFL stagnation history"<<exit(FatalError);
+            if (history.found("previousRelative"))
+            {
+                const scalar deficit=minDecay-log(previous/relativeBounded);
+                // Conditional integration: at the lower CFL bound, permit
+                // recovery (negative deficit), but prevent further windup.
+                if (deficit<0 || pseudoCoNum_().value()>pseudoCoNumMin_*(1+SMALL))
+                    integral=max(scalar(0),integral+deficit);
+            }
+            history.set("integral",integral);
+            history.set("previousRelative",relativeBounded);
+            ratio*=exp(-min(integralGain*integral,scalar(700)));
+        }
+        if (controls.lookupOrDefault<bool>("pseudoCoGainScheduling",false))
+        {
+            if (integralGain>0)
+                FatalErrorInFunction<<"Gain scheduling and stagnation integral cannot both be enabled"<<exit(FatalError);
+            const scalar beta=controls.lookupOrDefault<scalar>("pseudoCoTrendWeight",0.05);
+            const scalar epsilon=controls.lookupOrDefault<scalar>("pseudoCoTrendEpsilon",0.001);
+            const scalar minGain=controls.lookupOrDefault<scalar>("pseudoCoMinGain",0.3);
+            if (!std::isfinite(beta) || beta<=0 || beta>1 ||
+                !std::isfinite(epsilon) || epsilon<=0 ||
+                !std::isfinite(minGain) || minGain<=0 || minGain>1)
+                FatalErrorInFunction<<"Trend weight/minimum gain must be in (0,1]; trend epsilon must be positive and finite"<<exit(FatalError);
+            IOdictionary& history=const_cast<IOdictionary&>
+                (mesh_.lookupObject<IOdictionary>("hisaCFLTrendState"));
+            scalar trend=history.lookupOrDefault<scalar>("trend",0);
+            const scalar previous=history.lookupOrDefault<scalar>("previousRelative",relativeBounded);
+            if (!std::isfinite(trend) || !std::isfinite(previous) || previous<=0)
+                FatalErrorInFunction<<"Invalid saved CFL trend history"<<exit(FatalError);
+            if (history.found("previousRelative"))
+            {
+                const scalar slope=log(previous)-log(relativeBounded);
+                // First available slope seeds the EMA; signed trend is retained.
+                trend=history.lookupOrDefault<bool>("trendInitialized",false)
+                    ? (1-beta)*trend+beta*slope : slope;
+                history.set("trendInitialized",true);
+            }
+            const scalar positiveTrend=max(trend,scalar(0));
+            const scalar gain=minGain+(1-minGain)*positiveTrend/(positiveTrend+epsilon);
+            history.set("trend",trend);
+            history.set("previousRelative",relativeBounded);
+            history.set("gain",gain);
+            ratio*=gain;
+        }
+        // Log-space relaxation of the SER target, before rate and absolute bounds.
+        // One scalar power per rank; default retains the original arithmetic.
+        if (damping!=1) ratio=pow(ratio,damping);
         ratio=max(min(ratio,pseudoCoNumMaxIncr_),pseudoCoNumMinDecr_);
         pseudoCoNum_() *= ratio;
         pseudoCoNum_().value()=max(min(pseudoCoNum_().value(),pseudoCoNumMax_),pseudoCoNumMin_);

@@ -30,7 +30,7 @@ template<class S> S entropyAbs(const S& x,const S& delta) {
     S ax=x>=0 ? x : -x;
     return delta>0 && ax<delta ? (x*x/delta+delta)/2 : ax;
 }
-template<class S> State<S> dissipate(const Average<S>& b,const S* n,const State<S>& v,const S& entropy,const bool cfl3d=false) {
+template<class S> State<S> dissipate(const Average<S>& b,const S* n,const State<S>& v,const S& entropy,const bool allWave=false) {
     S un=0,u2=0,udm=0,dmn=0;
     for(int i=0;i<3;++i){un+=b.u[i]*n[i];u2+=b.u[i]*b.u[i];udm+=b.u[i]*v.q[i+1];dmn+=n[i]*v.q[i+1];}
     S dp=(b.gamma-1)*(v.q[4]-udm+u2*v.q[0]/2),dn=dmn-un*v.q[0];
@@ -38,16 +38,16 @@ template<class S> State<S> dissipate(const Average<S>& b,const S* n,const State<
     // CFL3D fhat.F: epsilon = entropy*(a+|u|+|v|+|w|), delta=2*epsilon.
     // Keep the scale active for AD; only the configuration switch is passive.
     S delta=entropy*b.a;
-    if(cfl3d){S speed=b.a;for(int i=0;i<3;++i)speed+=b.u[i]>=0 ? b.u[i] : -b.u[i];delta=2*entropy*speed;}
-    S lm=entropyAbs(S(un-b.a),delta),lp=entropyAbs(S(un+b.a),delta),lc=entropyAbs(un,cfl3d ? delta : S(0));
+    if(allWave){S speed=b.a;for(int i=0;i<3;++i)speed+=b.u[i]>=0 ? b.u[i] : -b.u[i];delta=2*entropy*speed;}
+    S lm=entropyAbs(S(un-b.a),delta),lp=entropyAbs(S(un+b.a),delta),lc=entropyAbs(un,allWave ? delta : S(0));
     State<S> d;d.q[0]=lm*am+lc*ac+lp*ap;S ushear=0;
     for(int i=0;i<3;++i){S shear=v.q[i+1]-b.u[i]*v.q[0]-n[i]*dn;ushear+=b.u[i]*shear;
         d.q[i+1]=lm*am*(b.u[i]-b.a*n[i])+lp*ap*(b.u[i]+b.a*n[i])+lc*(ac*b.u[i]+shear);}
     d.q[4]=lm*am*(b.H-b.a*un)+lp*ap*(b.H+b.a*un)+lc*(ac*u2/2+ushear);return d;
 }
-template<class S> State<S> flux(const State<S>& l,const State<S>& r,const S* n,const S& g,const S& entropy,const bool cfl3d=false) {
+template<class S> State<S> flux(const State<S>& l,const State<S>& r,const S* n,const S& g,const S& entropy,const bool allWave=false) {
     State<S> v;for(int i=0;i<5;++i)v.q[i]=r.q[i]-l.q[i];
-    auto d=dissipate(average(l,r,g),n,v,entropy,cfl3d);auto fl=physical(l,n,g),fr=physical(r,n,g);
+    auto d=dissipate(average(l,r,g),n,v,entropy,allWave);auto fl=physical(l,n,g),fr=physical(r,n,g);
     for(int i=0;i<5;++i) { fl.q[i]=(fl.q[i]+fr.q[i]-d.q[i])/2; }
     return fl;
 }
@@ -58,11 +58,33 @@ template<class S> State<S> physicalAction(const State<S>& w,const State<S>& v,co
     State<S> f;f.q[0]=dmn;for(int i=0;i<3;++i)f.q[i+1]=v.q[i+1]*un+w.q[i+1]*du+dp*n[i];
     f.q[4]=(v.q[4]+dp)*un+(w.q[4]+pressure(w,g))*du;return f;
 }
-template<class S> void frozenBlocks(const State<S>& l,const State<S>& r,const S* n,const S& g,const S& entropy,S L[5][5],S R[5][5],const bool cfl3d=false) {
+template<class S> void frozenBlocks(const State<S>& l,const State<S>& r,const S* n,const S& g,const S& entropy,S L[5][5],S R[5][5],const bool allWave=false) {
     auto b=average(l,r,g);
     for(int j=0;j<5;++j){State<S> v;for(int i=0;i<5;++i)v.q[i]=S(i==j ? 1 : 0);
-        auto d=dissipate(b,n,v,entropy,cfl3d),al=physicalAction(l,v,n,g),ar=physicalAction(r,v,n,g);
+        auto d=dissipate(b,n,v,entropy,allWave),al=physicalAction(l,v,n,g),ar=physicalAction(r,v,n,g);
         for(int i=0;i<5;++i){L[i][j]=(al.q[i]+d.q[i])/2;R[i][j]=(ar.q[i]-d.q[i])/2;}}
+}
+// Facewise Venkatakrishnan limiter. available and delta have the same sign.
+// eps2 has units q^2 and must be positive. Do not divide by delta: the
+// rational expression also gives the correct derivative at zero increment.
+// The classical function can exceed one; deliberately do not hard-clip it.
+template<class S> S venkatIncrement(const S& delta,const S& available,const S& eps2) {
+    const S a2=available*available;
+    return delta*(a2+2*available*delta+eps2)
+        /(a2+available*delta+2*delta*delta+eps2);
+}
+// Ordinary regularized symmetric van Albada factor. No squared-slope
+// substitution and no sign clipping. eps2>0 has units q^2. Opposite slopes
+// can give a negative factor; this smooth variant is not strictly TVD.
+template<class S> S vanAlbadaIncrement(const S& delta,const S& a,const S& b,const S& eps2) {
+    return delta*(2*a*b+eps2)/(a*a+b*b+eps2);
+}
+// Smooth squared-slope van Albada type factor (Engels-Putzka et al., 2014).
+// eps2 is positive and has units q^2; squaring gives the q^4 regularizer.
+// Unlike sign-clipped TVD variants, opposite slopes do not force first order.
+template<class S> S vanAlbadaTypeIncrement(const S& delta,const S& a,const S& b,const S& eps2) {
+    const S a2=a*a,b2=b*b,e4=eps2*eps2;
+    return delta*(2*a2*b2+e4)/(a2*a2+b2*b2+e4);
 }
 // Geometrically corrected U-MUSCL: linear-exact before limiting, including off-midpoint faces.
 template<class S> S reconstruct(const S& q,const S& other,const S& gradToFace,const S& gradToNeighbour,const S& kappa) {

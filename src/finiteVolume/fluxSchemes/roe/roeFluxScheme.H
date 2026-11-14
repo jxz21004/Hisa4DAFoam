@@ -11,7 +11,9 @@ class roeFluxScheme : public fluxScheme {
     const volVectorField& U_;
     const volScalarField& rhoE_;
     scalar kappa_, entropy_;
-    bool limit_, cfl3dEntropy_;
+    bool limit_, allWaveEntropy_;
+    word limiter_;
+    scalar smoothCoeff_, smoothLength_, smoothRho_, smoothU_, smoothP_;
 public:
     TypeName("Roe");
     roeFluxScheme(const dictionary&,const fluidThermo&,const volScalarField&,const volVectorField&,const volVectorField&,const volScalarField&);

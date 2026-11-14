@@ -53,7 +53,16 @@ relative <= steadyRelTol OR total absolute <= steadyAbsTol. Individual blocks
 are diagnostic only. `blocks` prints four unscaled DAFoam block RMS values;
 `combined` is an alias for total relative. `absolute` is a scaled discrete norm,
 not a dimensional conservation residual or the native GMRES inner residual.
-Other monitor names: `ksp`, `linear` (recomputed linear defect), `alpha`.
+Stage-specific monitors: `cfl` is printed only for PTC. In PTC, `ksp`
+prints actual native GMRES Krylov steps and restart cycles; `linear` prints
+`linRelMax` (maximum component-wise final/initial linear residual ratio) and
+`linearStop` (`absolute`, `relative`, or `maxIter`). These reuse the solver's
+existing residual checks. In NK, `ksp`, `linear`, and `alpha` print PETSc steps,
+recomputed linear defect ratio, and accepted line-search step respectively.
+PTC never prints `alpha`; NK never prints placeholder CFL. Solve statistics
+are omitted before the first solve and when a stage change makes them stale.
+PTC `linRelMax` and NK `linRel` use different norms and should not be compared
+numerically as the same metric.
 
 `ncycles` limits cumulative PTC + NK outer attempts, including across restarts.
 There is no separate NK outer limit. `ptcMinIterations` (default10) requires at
@@ -119,6 +128,7 @@ Hybrid PTC SER tuning in `pseudoTime` (independent of initial CFL):
 ```
 pseudoCoSafetyFactor      1;
 pseudoCoResidualExponent  1;
+pseudoCoLogDamping        1;
 ```
 
 Target = safetyFactor * savedInitialCFL / totalRelative^exponent. Both default
@@ -134,3 +144,87 @@ Changing them on restart intentionally changes subsequent targets. Default
 exponent1 avoids pow; otherwise one scalar power per PTC iteration per rank
 is used (not one per cell/face). No wall-time speedup/slowdown claim is made;
 changes to the nonlinear iteration count may dominate their arithmetic cost.
+
+Optional `pseudoCoLogDamping` omega is finite in (0,1], default1. Before
+existing rate limits and final CFL bounds, replace target/current by
+(target/current)^omega. This is log-CFL interpolation, not a new residual
+evaluation or a PD controller. Smaller omega gives stronger damping.
+Omega1 skips the extra pow and preserves old arithmetic. The current saved
+CFL is sufficient for restart; no additional history is required. This applies
+to hybrid PTC only. Example trial: omega0.2, safety0.5, exponent0.5.
+
+Optional stagnation integral: `pseudoCoStagnationGain` defaults0 (disabled),
+`pseudoCoStagnationDecay` defaults0.002 (positive log decrease per PTC call).
+For consecutive PTC residual evaluations s=log(previousRelative/relative),
+I=max(0,I+decay-s). Multiply the SER target by exp(-gain*I), then apply
+log damping, rate limits and absolute bounds. At minimum CFL, positive
+integral increments are frozen; negative increments can unwind. First call
+without history only seeds previousRelative. A mesh-owned AUTO_WRITE dictionary
+uniform/hisaCFLStagnationState saves integral and previousRelative with the
+flow checkpoint. History is optional: if absent at startup, integral starts
+at zero and the first PTC call seeds previousRelative. Reading occurs at the
+selected restart time before advancing Time, not lazily at the next step. NK does not update it; the next PTC call includes any intervening
+NK residual change. Exponential attenuation is limited to exp(-700).
+No extra residual evaluation or MPI collective. Gain must be finite >=0;
+decay finite >0. Set gain0 to retain the existing damped SER behavior.
+A fresh case must not copy controller history unless deliberately restarting.
+These controls do not guarantee stagnation removal; a too-small CFL may also
+cause slow convergence. Decay/gain defaults are not universal optimal settings.
+
+Optional hybrid PTC trend gain scheduling (default disabled):
+```
+pseudoCoGainScheduling true;
+pseudoCoTrendWeight    0.05;
+pseudoCoTrendEpsilon   0.001;
+pseudoCoMinGain        0.3;
+pseudoCoStagnationGain 0;
+pseudoCoLogDamping     1;
+```
+Use signed slope s=log(previousRelative)-log(relative), EMA m=(1-beta)*m+beta*s,
+and q=qmin+(1-qmin)*max(m,0)/(max(m,0)+epsilon). Multiply the original SER target
+by q before the existing rate and absolute limits. Epsilon is a user-set
+positive transition scale (log residual change per PTC call), not an absolute
+residual tolerance. At m=epsilon the correction is (1+qmin)/2; at m<=0 it is
+qmin. It is a bounded schedule, not an accumulating integral or proven
+convergence guarantee. Smaller epsilon releases the correction more readily.
+Beta and qmin must be finite in (0,1], epsilon finite >0.
+Cannot combine with a positive stagnation-integral gain. For pure scheduling
+set log damping1 as shown. Non-hybrid native SER and NK remain unchanged.
+Optional uniform/hisaCFLTrendState stores previousRelative, signed trend,
+trendInitialized and diagnostic gain. Read at startup at the selected time;
+without history the first call seeds previousRelative and uses m0=0, the
+first available slope initializes the EMA. No extra residual or MPI collective.
+
+### NK cubic line search
+
+`nkLineSearch relaxedCubic` (default) follows the local ADflow `LSCubic`
+acceptance policy: unit step, quadratic then cubic backtracking, Armijo
+coefficient 0.01, and successive interpolation steps restricted to 0.1–0.5
+of the previous step. `nkMinLineSearchStep 0.01` is the backtracking stopping
+threshold, not a lower clamp. A finite admissible trial at or below that
+threshold can be accepted without sufficient decrease. `strictCubic` retains
+the former mandatory-decrease policy and 1e-8 backtracking cutoff.
+
+A full-step SA residual norm increase above twice the base norm triggers
+prelimiting (initial factor max(base/trial, 0.1), then halving). Invalid
+trials also trigger preliminary halving, with at most ten preliminary
+trials. The preliminary Armijo test follows ADflow's unscaled-slope RHS.
+The SA norm is formed from the scaled SA residual entries; its fixed block
+scale cancels in the growth ratio. This adds one scalar global reduction
+per evaluated merit for the turbulence norm.
+
+Intentional differences from ADflow: invalid/nonphysical trials are always
+rejected; exhausting preliminary trials rejects and restores the base state;
+we do not reset to a uniform field or change the user's NK switch threshold
+on NaN. Existing linear-defect rejection and PTC fallback remain in force.
+The `alpha` monitor includes `ls minimumStep` or `ls sufficientDecrease`,
+and `prelimited` identifies preliminary backtracking. This is a primal
+iteration policy; the residual and its adjoint definition are unchanged.
+
+Standalone policy verification:
+```
+g++ -std=c++17 -I src/petscNK tests/petscNK/cubicSearchTest.C -o /tmp/cubicSearchTest
+/tmp/cubicSearchTest
+```
+
+Only `relaxedCubic` and `strictCubic` are accepted line-search names.
