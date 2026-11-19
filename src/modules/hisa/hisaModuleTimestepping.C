@@ -250,6 +250,8 @@ void hisaModule::setPseudoCoNum()
             history.set("gain",gain);
             ratio*=gain;
         }
+        #include "residualCFLFeedback.H"
+
         // Log-space relaxation of the SER target, before rate and absolute bounds.
         // One scalar power per rank; default retains the original arithmetic.
         if (damping!=1) ratio=pow(ratio,damping);

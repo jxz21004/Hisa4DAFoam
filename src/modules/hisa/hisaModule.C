@@ -304,6 +304,31 @@ void hisaModule::initialise()
         )
     );
 
+    const dictionary residualFeedback = solnControl_().dict().subOrEmptyDict("pseudoCoResidualFeedback");
+    if (residualFeedback.lookupOrDefault<bool>("enabled", false))
+    {
+        const dictionary& controls = solnControl_().dict();
+        const dictionary hybrid = mesh.solutionDict().subOrEmptyDict("hisaHybrid");
+        if (!hybrid.lookupOrDefault<bool>("enabled", false)
+            || hybrid.lookupOrDefault<bool>("nativePTCCFL", false)
+            || controls.lookupOrDefault<bool>("pseudoCoRandom", false)
+            || controls.lookupOrDefault<bool>("pseudoCoPlateauControl", false)
+            || controls.lookupOrDefault<scalar>("pseudoCoStagnationGain", 0) > 0
+            || controls.lookupOrDefault<bool>("pseudoCoGainScheduling", false))
+            FatalErrorInFunction << "Residual CFL feedback requires hybrid SER"
+                << " and exclusive control of the SER correction" << exit(FatalError);
+
+        if (!mesh.foundObject<IOdictionary>("hisaCFLFeedbackState"))
+        {
+            IOdictionary* history = new IOdictionary(IOobject
+            (
+                "hisaCFLFeedbackState", runTime.timeName(), "uniform", mesh,
+                IOobject::READ_IF_PRESENT, IOobject::AUTO_WRITE
+            ));
+            history->store();
+        }
+    }
+
     // Read controller history at the selected restart time, before the first
     // outer iteration advances Time. Lazy reading could pick up a later file.
     if (mesh.solutionDict().subOrEmptyDict("hisaHybrid").lookupOrDefault<bool>("enabled",false)

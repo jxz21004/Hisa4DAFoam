@@ -228,3 +228,48 @@ g++ -std=c++17 -I src/petscNK tests/petscNK/cubicSearchTest.C -o /tmp/cubicSearc
 ```
 
 Only `relaxedCubic` and `strictCubic` are accepted line-search names.
+
+### Stepwise residual feedback for PTC
+
+Set `pseudoCoResidualFeedback` in `pseudoTime` to enable per-step feedback in
+hybrid SER mode. The defaults are shown below. Disable the windowed plateau,
+random, trend and stagnation controllers when using this option.
+
+```foam
+pseudoCoResidualFeedback
+{
+    enabled         true;
+    targetDecay     0.002302585092994046;
+    upThreshold     0.15;
+    downThreshold   0.2302585092994046;
+    increase        1.02;
+    decrease        0.8;
+    minFactor       1e-4;
+    maxFactor       100;
+    referenceWeight 0.1;
+    trialTolerance  0.15;
+    trialMaxSteps   40;
+}
+```
+
+Each PTC update contributes its log residual decay minus `targetDecay` to
+the growth integral, and the negated difference to the decrease integral.
+Both integrals have a floor of zero. Crossing the growth threshold increases
+the multiplier. Crossing the decrease threshold starts a trial if the new
+multiplier would lower the actual CFL. If omitted, `downThreshold` defaults
+to `100*targetDecay`.
+
+The trial freezes the multiplier and compares the accumulated log residual
+drop with the extrapolated pre-trial rate. `referenceWeight` is the weight of
+the newest sample in that rate's exponential average. Improvement of at
+least `trialTolerance` retains the multiplier. Deterioration by the same
+tolerance or reaching `trialMaxSteps` without confirmation restores the
+prior multiplier and waits for a change in the residual trend before another
+decrease trial.
+
+The multiplier applies to the uncapped SER target, followed by the existing
+CFL rate and absolute bounds. With `pseudoCoLogDamping 1`, the rate limits
+apply directly to the target-to-current CFL ratio. The multiplier, integrals
+and pending trial are checkpointed in `uniform/hisaCFLFeedbackState`.
+After an NK gap, the controller discards an unfinished trial and resets its
+residual trend.
